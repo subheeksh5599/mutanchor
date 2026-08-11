@@ -1,0 +1,9 @@
+[package]
+name = "mutanchor"
+version = "0.1.0"
+edition = "2021"
+description = "Mutation testing for Solana Anchor programs"
+license = "MIT"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
