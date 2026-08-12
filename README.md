@@ -160,7 +160,7 @@ Each operator models a bug class from the Solana audit-findings corpus:
 | **LiteSVM runner** — build pipeline + classification | **Pending** — Phase 2 |
 | **Report** — HTML viewer + JSON output | **Pending** — Phase 3 |
 | **Demo program + published report** | **Pending** — Phase 5 |
-| **Demo site** — landing + report viewer, one URL | **Pending** — frontend sourced separately, deployed to Vercel |
+| **Demo site** — landing + report viewer, one URL | **Live** — [mutanchor.vercel.app](https://mutanchor.vercel.app), landing `/`, panel `/dashboard` |
 | **CI** — build, test, clippy, fmt, cargo audit | **Pending** — Phase 7 |
 
 ---
@@ -186,13 +186,26 @@ cargo run -- --help
 
 ---
 
+## Demo site
+
+Live at [mutanchor.vercel.app](https://mutanchor.vercel.app): landing at `/`,
+report panel at `/dashboard`, one URL. Frontend is Vite + React + Tailwind v4
+in `frontend/`.
+
+Report contract: `mutanchor run` emits `report.json`; copy it to
+`frontend/public/` and redeploy. The panel renders the real output and stays
+empty until that file exists. No sample data.
+
+---
+
 ## Project layout
 
 ```
 mutanchor/
 ├── src/
 │   └── main.rs            # CLI entry — init / run / report / ci
-├── frontend/              # demo site source (landing + report viewer)
+├── frontend/              # demo site (Vite + React + Tailwind v4)
+│   └── public/            # report.json lands here before deploy
 ├── Cargo.toml
 ├── LICENSE
 └── README.md
