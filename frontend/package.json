@@ -1,0 +1,30 @@
+{
+  "name": "mutanchor-frontend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@fontsource/ibm-plex-mono": "^5.3.0",
+    "@fontsource/instrument-serif": "^5.3.0",
+    "@fontsource/oswald": "^5.3.0",
+    "@gsap/react": "^2.1.2",
+    "gsap": "^3.13.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-router-dom": "^6.30.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.1.8",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "@vitejs/plugin-react": "^4.4.1",
+    "tailwindcss": "^4.1.8",
+    "typescript": "^5.8.3",
+    "vite": "^6.3.5"
+  }
+}

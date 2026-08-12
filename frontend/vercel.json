@@ -1,0 +1,4 @@
+{
+  "rewrites": [{ "source": "/dashboard", "destination": "/index.html" }],
+  "cleanUrls": true
+}

@@ -1,0 +1,138 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bone: #edeae3;
+  --color-ink: #0a0a0a;
+  --color-chartreuse: #d9ff00;
+  --color-danger: #ff4d00;
+  --color-pitch: #0b1a0e;
+  --font-display: "Oswald", "Arial Narrow", sans-serif;
+  --font-serifit: "Instrument Serif", Georgia, serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  @apply bg-bone text-ink font-mono antialiased;
+  overflow-x: hidden;
+}
+
+::selection {
+  background: var(--color-chartreuse);
+  color: var(--color-ink);
+}
+
+.mono-label {
+  @apply font-mono text-[0.7rem] uppercase tracking-[0.18em] text-ink/60;
+}
+
+.serif-it {
+  font-family: var(--font-serifit);
+  font-style: italic;
+  font-weight: 400;
+}
+
+.display {
+  font-family: var(--font-display);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.01em;
+  line-height: 0.95;
+}
+
+/* film grain overlay */
+.grain {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  pointer-events: none;
+  opacity: 0.07;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* mechanism pipeline steps */
+.step-cell {
+  transition:
+    background-color 0.4s ease,
+    color 0.4s ease,
+    border-color 0.4s ease,
+    transform 0.4s ease;
+}
+
+.step-cell.is-active {
+  background: var(--color-chartreuse);
+  border-color: var(--color-ink);
+  transform: translateX(4px);
+}
+
+.step-cell.is-done {
+  background: var(--color-ink);
+  border-color: var(--color-ink);
+  color: var(--color-bone);
+}
+
+/* kill grid scan line */
+@keyframes scan {
+  0% {
+    transform: translateY(-2px);
+    opacity: 0;
+  }
+  8% {
+    opacity: 1;
+  }
+  92% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+}
+
+.scan-line {
+  animation: scan 3.2s linear infinite;
+}
+
+/* soft pulse for survivor tiles */
+@keyframes pulse-danger {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+.tile-survivor {
+  animation: pulse-danger 2.4s ease-in-out infinite;
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.fade-up {
+  animation: fade-up 0.6s ease both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scan-line,
+  .tile-survivor,
+  .fade-up {
+    animation: none;
+  }
+  html {
+    scroll-behavior: auto;
+  }
+}
