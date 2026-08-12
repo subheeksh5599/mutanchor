@@ -2,12 +2,13 @@
 
 # Mutanchor
 
+[![Live demo](https://img.shields.io/badge/live-mutanchor.vercel.app-D9FF00)](https://mutanchor.vercel.app)
 [![License: MIT](https://img.shields.io/badge/license-MIT-14151a.svg)](LICENSE)
 ![Language](https://img.shields.io/badge/Rust%202021-14151a)
 ![Target](https://img.shields.io/badge/Solana%20Anchor-14151a)
 ![Status](https://img.shields.io/badge/status-early%20scaffold-9ca3af)
 
-### Your tests pass. The bug ships anyway. Mutanchor proves which bugs your tests would miss.
+### Line coverage lies. Mutanchor proves which bugs your tests would miss.
 
 Mutation testing for Solana Anchor programs. Mutanchor rewrites Anchor source at
 the AST level to inject real bug classes — missing signer checks, PDA bump
@@ -18,6 +19,10 @@ tests would miss that bug in production.
 
 cargo-mutants has zero Solana support. No Solana mutation tool ships. Mutanchor
 is that gap.
+
+**[ Live demo ↗ ](https://mutanchor.vercel.app)** · **[ Report panel ↗ ](https://mutanchor.vercel.app/dashboard)** · **[ Source ↗ ](https://github.com/subheeksh5599/mutanchor)** · **[ Architecture ↓ ](#architecture)** · **[ Run it locally ↓ ](#run-it-locally)**
+
+Built for the Solana ecosystem. MIT licensed.
 
 </div>
 
@@ -30,9 +35,12 @@ is that gap.
 - [How Mutanchor works](#how-mutanchor-works)
 - [Architecture](#architecture)
 - [Operators](#operators)
+- [How it uses Solana](#how-it-uses-solana)
+- [Engineering decisions & the hard problems](#engineering-decisions--the-hard-problems)
 - [What's real vs pending — the honesty table](#whats-real-vs-pending--the-honesty-table)
 - [Tests](#tests)
 - [Run it locally](#run-it-locally)
+- [Deploy](#deploy)
 - [Project layout](#project-layout)
 - [Tech stack](#tech-stack)
 - [Roadmap](#roadmap)
@@ -60,26 +68,26 @@ Options:
   -V, --version  Print version
 ```
 
-The CLI is the contract. `init` locates what to mutate, `run` executes the
-mutate-build-execute loop, `report` renders the evidence, `ci` fails the build
-when survivors exceed a threshold.
+That output is real — build the crate and run it. `init` locates what to
+mutate, `run` executes the mutate-build-execute loop, `report` renders the
+evidence, `ci` fails the build when survivors exceed a threshold.
 
 ---
 
 ## The problem Mutanchor solves
 
-- **Line coverage lies.** A test suite can touch 100% of the lines and still
-  miss every bug that matters. Coverage counts execution, not assertions.
-- **Anchor bugs are repetitive.** Solana audits keep finding the same classes —
+- **Line coverage lies.** Coverage counts execution, not assertions. A suite
+  can touch every line and still miss every bug that matters.
+- **Anchor bugs are repetitive.** Solana audits keep finding the same classes:
   missing signer checks, wrong PDA bumps, dropped authority checks. If your
-  tests don't catch one, an attacker can use it.
-- **Nothing measures the gap.** cargo-mutants targets generic Rust and has zero
+  tests do not catch one, an attacker can use it.
+- **Nothing measures the gap.** cargo-mutants targets generic Rust with zero
   Solana support. Test generators (solify, testship) produce tests; nothing
   verifies the tests would actually fail when the program is broken.
 
-Mutanchor quantifies the gap: kill a mutant, your tests proved something.
-Let it survive, and the report shows you the exact line an attacker could stand
-on.
+Existing metrics are execution counts. Mutanchor measures faults detected:
+kill a mutant, your tests proved something; let it survive, the report shows
+the exact line an attacker could stand on.
 
 ---
 
@@ -149,18 +157,60 @@ Each operator models a bug class from the Solana audit-findings corpus:
 
 ---
 
+## How it uses Solana
+
+**Builds.** Every mutant is compiled with `cargo build-sbf` — the real Solana
+BPF toolchain — producing a loadable `.so` per mutant.
+
+**Executes.** Mutants run on LiteSVM, the in-process Solana runtime used by
+the Anchor test harness (anchor-litesvm). Instruction-level test suites run
+against each mutated build with no validator, no cluster, no wait.
+
+**Parses.** The Anchor IDL (the program's own interface definition) drives
+`init`: instructions are mapped to their source files, so mutants land exactly
+where the audit corpus says bugs live.
+
+---
+
+## Engineering decisions & the hard problems
+
+- **Deterministic mutation, no LLM in the analysis path.** Operators are AST
+  rewrites (syn + quote) — the same input always produces the same mutants.
+  AI accelerates the build of the tool; it never judges the verdict.
+
+- **One fault per mutant.** Compound mutations confound results. Every mutant
+  carries exactly one injected bug, so every survivor is attributable to one
+  operator at one file:line.
+
+- **Equivalent-mutant dedup.** Mutants that change no behavior are detected
+  and dropped — they would otherwise drag the score down without meaning.
+
+- **Build-failed is a signal, not a crash.** A mutant that fails to compile
+  classifies as `build-failed` and the run continues. Hanging mutants hit a
+  timeout, never an infinite wait.
+
+- **In-process execution.** LiteSVM removes the validator bootstrap — the
+  whole mutate-build-execute loop is one process, which is what makes mutation
+  testing tractable for Anchor at all.
+
+- **No secrets, no hardcoded paths.** The repo carries no keys and no
+  absolute paths. Configuration arrives with the runner: env vars with
+  defaults only.
+
+---
+
 ## What's real vs pending — the honesty table
 
 | Capability | Status |
 |---|---|
 | **CLI scaffold** — init / run / report / ci | **Real** — builds, runs, output above |
 | **Fresh-clone build** — `cargo check` on clean clone | **Real** — verified |
+| **Demo site** — landing + report panel, one URL | **Real** — live at [mutanchor.vercel.app](https://mutanchor.vercel.app) |
 | **Source rewriting** — syn + quote AST transforms | **Pending** — Phase 1 |
 | **Operators** — 8 planned | **Pending** — Phase 1 |
 | **LiteSVM runner** — build pipeline + classification | **Pending** — Phase 2 |
 | **Report** — HTML viewer + JSON output | **Pending** — Phase 3 |
 | **Demo program + published report** | **Pending** — Phase 5 |
-| **Demo site** — landing + report viewer, one URL | **Live** — [mutanchor.vercel.app](https://mutanchor.vercel.app), landing `/`, panel `/dashboard` |
 | **CI** — build, test, clippy, fmt, cargo audit | **Pending** — Phase 7 |
 
 ---
@@ -168,33 +218,42 @@ Each operator models a bug class from the Solana audit-findings corpus:
 ## Tests
 
 No automated tests yet — there are no operators to exercise. The CLI builds
-clean and passes clippy-level hygiene gates as they land. Every operator ships
-with a unit test on a small fixture program, per the build checklist.
+clean. Every operator ships with a unit test on a small fixture program, per
+the build checklist. Nothing on this site or in this README is sample data;
+the report panel stays empty until a real `mutanchor run` exists.
 
 ---
 
 ## Run it locally
 
-**Prerequisites:** Rust stable (2021 edition).
+**Prerequisites:** Rust stable (2021 edition), Node.js 18+ (demo site only).
 
 ```bash
 git clone https://github.com/subheeksh5599/mutanchor.git
 cd mutanchor
+
+# Build the CLI
 cargo build --release
+
+# Run it
 cargo run -- --help
+
+# Run the demo site locally
+cd frontend && npm install && npm run dev   # :5173
 ```
 
 ---
 
-## Demo site
+## Deploy
 
-Live at [mutanchor.vercel.app](https://mutanchor.vercel.app): landing at `/`,
-report panel at `/dashboard`, one URL. Frontend is Vite + React + Tailwind v4
-in `frontend/`.
+| | |
+|---|---|
+| **Demo site** | **[mutanchor.vercel.app](https://mutanchor.vercel.app)** — Vercel, landing at `/`, report panel at `/dashboard` |
+| **Source** | **[github.com/subheeksh5599/mutanchor](https://github.com/subheeksh5599/mutanchor)** |
 
 Report contract: `mutanchor run` emits `report.json`; copy it to
 `frontend/public/` and redeploy. The panel renders the real output and stays
-empty until that file exists. No sample data.
+empty until that file exists.
 
 ---
 
@@ -220,6 +279,7 @@ mutanchor/
   analysis path
 - **Execution:** LiteSVM / anchor-litesvm, `cargo build-sbf`
 - **Report:** static HTML (Vercel-deployable) + JSON for CI
+- **Demo site:** Vite, React, Tailwind v4 — self-hosted fonts, light mode
 
 ---
 
