@@ -18,7 +18,7 @@ change, it was a good test. If they don't, that change is a bug your tests
 would miss in production — and the report shows you exactly where it is and
 what an attacker could do with it.
 
-It is a plain CLI, not an AI tool and not a skill: every change comes from a
+It is a CLI, not an AI tool and not a skill: every change comes from a
 fixed rule set, so results are deterministic and reproducible. AI is used to
 build the tool, never to judge the results.
 
