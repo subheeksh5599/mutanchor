@@ -138,7 +138,8 @@ export default function Landing() {
               Mutanchor rewrites Anchor source at the AST level to inject real
               bug classes, builds each mutant, runs your test suite against it
               on LiteSVM, and reports which mutants survive. A survivor is a bug
-              your tests would miss in production.
+              your tests would miss in production. It is a plain CLI, no skill
+              and no agent: every change comes from a fixed rule set, not AI.
             </p>
             <div className="hero-reveal mt-8 flex flex-wrap gap-4">
               <Link

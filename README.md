@@ -6,6 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-14151a.svg)](LICENSE)
 ![Language](https://img.shields.io/badge/Rust%202021-14151a)
 ![Target](https://img.shields.io/badge/Solana%20Anchor-14151a)
+![Type](https://img.shields.io/badge/type-standalone%20CLI-14151a)
 ![Status](https://img.shields.io/badge/status-early%20scaffold-9ca3af)
 
 ### Line coverage lies. Mutanchor proves which bugs your tests would miss.
@@ -16,6 +17,10 @@ the program's test suite against each changed version. If the tests catch the
 change, it was a good test. If they don't, that change is a bug your tests
 would miss in production — and the report shows you exactly where it is and
 what an attacker could do with it.
+
+It is a plain CLI, not an AI tool and not a skill: every change comes from a
+fixed rule set, so results are deterministic and reproducible. AI is used to
+build the tool, never to judge the results.
 
 cargo-mutants has zero Solana support. No Solana mutation tool ships. Mutanchor
 is that gap.
@@ -177,10 +182,10 @@ audit corpus says bugs live.
 
 ## Engineering decisions & the hard problems
 
-- **Deterministic changes, no AI in the verdict.** Mutants are created by a
-  fixed set of rewriting rules — same input, same output, every time. AI tools
-  speed up building the tool itself; they never decide whether a change was
-  caught.
+- **A CLI, not an AI tool.** Mutanchor is a standalone command-line tool, not
+  a skill and not an agent. The changes come from a fixed set of rewriting
+  rules — same input, same mutants, every time. AI tools speed up building the
+  tool itself; they never decide whether a change was caught.
 
 - **One fault per mutant.** Two changes at once make results impossible to
   read. Every mutant carries exactly one injected bug, so every survivor is
