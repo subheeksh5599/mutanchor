@@ -10,12 +10,12 @@
 
 ### Line coverage lies. Mutanchor proves which bugs your tests would miss.
 
-Mutation testing for Solana Anchor programs. Mutanchor rewrites Anchor source at
-the AST level to inject real bug classes — missing signer checks, PDA bump
-mismatches, dropped authority checks, discriminator removal, boundary flips,
-CPI target swaps — then builds each mutant with `cargo build-sbf` and runs the
-program's test suite against it on LiteSVM. A mutant that survives means the
-tests would miss that bug in production.
+Mutanchor is a testing tool for Solana programs built with Anchor. It makes
+small, deliberate changes to a program's source code, one at a time, then runs
+the program's test suite against each changed version. If the tests catch the
+change, it was a good test. If they don't, that change is a bug your tests
+would miss in production — and the report shows you exactly where it is and
+what an attacker could do with it.
 
 cargo-mutants has zero Solana support. No Solana mutation tool ships. Mutanchor
 is that gap.
@@ -59,7 +59,7 @@ Usage: mutanchor <COMMAND>
 Commands:
   init    Parse the Anchor IDL and locate instruction source files
   run     Mutate, build each mutant, and run the suite on LiteSVM
-  report  Emit the mutation report (HTML + JSON)
+  report  Emit the mutation report
   ci      CI mode: fail when surviving mutants exceed a threshold
   help    Print this message or the help of the given subcommand(s)
 
@@ -68,44 +68,47 @@ Options:
   -V, --version  Print version
 ```
 
-That output is real — build the crate and run it. `init` locates what to
-mutate, `run` executes the mutate-build-execute loop, `report` renders the
-evidence, `ci` fails the build when survivors exceed a threshold.
+That output is real — build the crate and run it. `init` finds what to change,
+`run` does the changing and testing, `report` produces the scorecard, `ci`
+fails the build when too many bugs slip through.
 
 ---
 
 ## The problem Mutanchor solves
 
-- **Line coverage lies.** Coverage counts execution, not assertions. A suite
-  can touch every line and still miss every bug that matters.
+- **Line coverage lies.** Coverage counts which lines ran, not whether the
+  checks are real. A suite can touch every line and still miss every bug that
+  matters.
 - **Anchor bugs are repetitive.** Solana audits keep finding the same classes:
   missing signer checks, wrong PDA bumps, dropped authority checks. If your
   tests do not catch one, an attacker can use it.
-- **Nothing measures the gap.** cargo-mutants targets generic Rust with zero
-  Solana support. Test generators (solify, testship) produce tests; nothing
-  verifies the tests would actually fail when the program is broken.
+- **Nothing measures the gap.** Existing tools generate tests for you, but
+  nothing checks whether those tests would actually fail when the program is
+  broken.
 
-Existing metrics are execution counts. Mutanchor measures faults detected:
-kill a mutant, your tests proved something; let it survive, the report shows
-the exact line an attacker could stand on.
+Mutanchor measures the gap directly: kill a mutant, your tests proved
+something. Let it survive, and the report shows the exact line an attacker
+could stand on.
 
 ---
 
 ## How Mutanchor works
 
-1. **Locate.** `init` parses the Anchor IDL and maps every instruction to its
-   source file.
-2. **Mutate.** Each operator rewrites the Rust AST (syn + quote) to inject one
-   bug class. One mutant per fault, no compound mutations.
-3. **Build.** Each mutant is compiled with `cargo build-sbf`. A mutant that
-   fails to build is classified `build-failed` — itself a signal.
-4. **Execute.** The program's own test suite runs against the mutant on
-   LiteSVM (anchor-litesvm), in-process, no validator needed.
-5. **Classify.** Killed (a test failed), survived (all tests passed), or
-   timed out.
-6. **Report.** Per-instruction mutation score, surviving mutants with
-   operator + file:line + what an attacker could do with each. HTML for
-   humans, JSON for CI.
+1. **Locate.** The tool reads the Anchor program and maps every instruction to
+   its source file.
+2. **Mutate.** It makes one small, deliberate change to the source code — the
+   kind of mistake Solana audits keep finding. One change per version, never
+   two at once.
+3. **Build.** Each changed version is compiled with Solana's official build
+   toolchain. One that fails to compile is recorded as build-failed, which is
+   itself useful information.
+4. **Execute.** The program's own test suite runs against each changed version
+   on LiteSVM, a fast in-memory Solana runtime — no network, no waiting.
+5. **Classify.** Killed (a test failed), survived (all tests passed), or timed
+   out.
+6. **Report.** A mutation score per instruction and overall, plus a list of
+   every surviving change with its file and line and what an attacker could do
+   with it.
 
 ---
 
@@ -114,29 +117,29 @@ the exact line an attacker could stand on.
 ```
 ┌─────────────┐   ┌──────────────────────────────────────────┐   ┌──────────────┐
 │ Anchor      │──▶│  mutanchor (Rust CLI)                     │──▶│  LiteSVM      │
-│ program     │   │                                          │   │  runner       │
-│ (source +   │   │  ┌──────────┐   ┌───────────┐            │   │              │
-│  tests)     │   │  │ syn/quote│──▶│ cargo     │──mutant────▶│  │ anchor-      │
-│             │   │  │ AST      │   │ build-sbf │  .so        │   │ litesvm      │
-│             │   │  │ rewrite  │   │           │             │   │              │
-│             │   │  └──────────┘   └───────────┘             │   │  test suite   │
-│             │   │                                          │   │  per mutant   │
-│             │   │  ┌──────────┐   ┌───────────┐            │   └──────┬───────┘
-│             │   │  │ operator │   │ report    │◀─── killed/│          │
-│             │   │  │ table    │   │ HTML+JSON │    survived│          ▼
-│             │   └──┴──────────┴───┴───────────┘            │   mutation score
-└─────────────┘                                              └──────────────
+│ program     │   │                                          │   │  runtime      │
+│ (source +   │   │  ┌──────────────┐   ┌──────────────┐     │   │              │
+│  tests)     │   │  │ source       │──▶│ build        │──change─▶│  runs the    │
+│             │   │  │ rewriter     │   │ (Solana      │  .so  │   │  test suite  │
+│             │   │  │ (one change  │   │  toolchain)  │      │   │  per version │
+│             │   │  │  per mutant) │   │              │      │   └──────┬───────┘
+│             │   │  └──────────────┘   └──────────────┘      │          │
+│             │   │  ┌──────────────┐   ┌──────────────┐      │          ▼
+│             │   │  │ operator     │   │ report       │◀─────│  mutation score
+│             │   │  │ table        │   │ scorecard    │      │
+│             │   └──┴──────────────┴───┴──────────────┘      └──────────────
+└─────────────┘
 ```
 
-### Mutate → build → execute → score
+### Change → build → test → score
 
-| Step | Tool | Output |
+| Step | How | What comes out |
 |---|---|---|
-| Parse IDL | `mutanchor init` | instruction → source file map |
-| Rewrite source | syn + quote | N mutant copies, one fault each |
-| Build mutants | `cargo build-sbf` | `.so` per mutant (incremental cache) |
-| Run suite | anchor-litesvm | killed / survived / build-failed / timeout |
-| Score | report module | mutation score per instruction + overall |
+| Read the program | `mutanchor init` | instruction → source file map |
+| Make one change | source rewriter | one changed version per fault |
+| Build the change | Solana build toolchain | a runnable program per version |
+| Run the tests | LiteSVM | killed / survived / build-failed / timeout |
+| Score | report | mutation score per instruction + overall |
 
 ---
 
@@ -159,42 +162,43 @@ Each operator models a bug class from the Solana audit-findings corpus:
 
 ## How it uses Solana
 
-**Builds.** Every mutant is compiled with `cargo build-sbf` — the real Solana
-BPF toolchain — producing a loadable `.so` per mutant.
+**Builds.** Every changed version is compiled with Solana's official build
+toolchain, the same one real Anchor programs use.
 
-**Executes.** Mutants run on LiteSVM, the in-process Solana runtime used by
-the Anchor test harness (anchor-litesvm). Instruction-level test suites run
-against each mutated build with no validator, no cluster, no wait.
+**Executes.** Versions run on LiteSVM, the in-memory Solana runtime used by the
+Anchor test harness — instruction-level tests, no validator, no cluster, no
+wait.
 
-**Parses.** The Anchor IDL (the program's own interface definition) drives
-`init`: instructions are mapped to their source files, so mutants land exactly
-where the audit corpus says bugs live.
+**Reads.** The Anchor program's own interface file drives the tool: every
+instruction is mapped to its source file, so changes land exactly where the
+audit corpus says bugs live.
 
 ---
 
 ## Engineering decisions & the hard problems
 
-- **Deterministic mutation, no LLM in the analysis path.** Operators are AST
-  rewrites (syn + quote) — the same input always produces the same mutants.
-  AI accelerates the build of the tool; it never judges the verdict.
+- **Deterministic changes, no AI in the verdict.** Mutants are created by a
+  fixed set of rewriting rules — same input, same output, every time. AI tools
+  speed up building the tool itself; they never decide whether a change was
+  caught.
 
-- **One fault per mutant.** Compound mutations confound results. Every mutant
-  carries exactly one injected bug, so every survivor is attributable to one
-  operator at one file:line.
+- **One fault per mutant.** Two changes at once make results impossible to
+  read. Every mutant carries exactly one injected bug, so every survivor is
+  attributable to one rule at one file:line.
 
-- **Equivalent-mutant dedup.** Mutants that change no behavior are detected
-  and dropped — they would otherwise drag the score down without meaning.
+- **Meaningless mutants are dropped.** A change that cannot affect behavior
+  would drag the score down without meaning, so it is detected and removed.
 
-- **Build-failed is a signal, not a crash.** A mutant that fails to compile
-  classifies as `build-failed` and the run continues. Hanging mutants hit a
-  timeout, never an infinite wait.
+- **Build-failed is a signal, not a crash.** A mutant that does not compile is
+  recorded and the run continues. A mutant that hangs hits a timeout — the run
+  never waits forever.
 
-- **In-process execution.** LiteSVM removes the validator bootstrap — the
-  whole mutate-build-execute loop is one process, which is what makes mutation
-  testing tractable for Anchor at all.
+- **Fast execution is the whole point.** LiteSVM runs everything in one
+  process, which is what makes this kind of testing practical for Solana at
+  all.
 
-- **No secrets, no hardcoded paths.** The repo carries no keys and no
-  absolute paths. Configuration arrives with the runner: env vars with
+- **No secrets, no hardcoded paths.** The repo carries no keys and no machine
+  paths. Configuration arrives with the runner: environment variables with
   defaults only.
 
 ---
@@ -206,10 +210,10 @@ where the audit corpus says bugs live.
 | **CLI scaffold** — init / run / report / ci | **Real** — builds, runs, output above |
 | **Fresh-clone build** — `cargo check` on clean clone | **Real** — verified |
 | **Demo site** — landing + report panel, one URL | **Real** — live at [mutanchor.vercel.app](https://mutanchor.vercel.app) |
-| **Source rewriting** — syn + quote AST transforms | **Pending** — Phase 1 |
+| **Source rewriting** — one change per mutant | **Pending** — Phase 1 |
 | **Operators** — 8 planned | **Pending** — Phase 1 |
 | **LiteSVM runner** — build pipeline + classification | **Pending** — Phase 2 |
-| **Report** — HTML viewer + JSON output | **Pending** — Phase 3 |
+| **Report** — scorecard per instruction | **Pending** — Phase 3 |
 | **Demo program + published report** | **Pending** — Phase 5 |
 | **CI** — build, test, clippy, fmt, cargo audit | **Pending** — Phase 7 |
 
@@ -218,9 +222,9 @@ where the audit corpus says bugs live.
 ## Tests
 
 No automated tests yet — there are no operators to exercise. The CLI builds
-clean. Every operator ships with a unit test on a small fixture program, per
-the build checklist. Nothing on this site or in this README is sample data;
-the report panel stays empty until a real `mutanchor run` exists.
+clean. Every operator ships with a unit test on a small fixture program.
+Nothing on this site or in this README is sample data; the report panel stays
+empty until a real run exists.
 
 ---
 
@@ -251,9 +255,9 @@ cd frontend && npm install && npm run dev   # :5173
 | **Demo site** | **[mutanchor.vercel.app](https://mutanchor.vercel.app)** — Vercel, landing at `/`, report panel at `/dashboard` |
 | **Source** | **[github.com/subheeksh5599/mutanchor](https://github.com/subheeksh5599/mutanchor)** |
 
-Report contract: `mutanchor run` emits `report.json`; copy it to
-`frontend/public/` and redeploy. The panel renders the real output and stays
-empty until that file exists.
+The report panel shows the real output of `mutanchor run`. Run the tool on a
+program, publish the resulting report, and the panel renders it. Until then it
+stays empty.
 
 ---
 
@@ -264,7 +268,7 @@ mutanchor/
 ├── src/
 │   └── main.rs            # CLI entry — init / run / report / ci
 ├── frontend/              # demo site (Vite + React + Tailwind v4)
-│   └── public/            # report.json lands here before deploy
+│   └── public/            # reports land here before publishing
 ├── Cargo.toml
 ├── LICENSE
 └── README.md
@@ -274,11 +278,11 @@ mutanchor/
 
 ## Tech stack
 
-- **CLI:** Rust, clap (derive)
-- **Mutation engine:** syn + quote — deterministic AST rewriting, no LLM in the
-  analysis path
-- **Execution:** LiteSVM / anchor-litesvm, `cargo build-sbf`
-- **Report:** static HTML (Vercel-deployable) + JSON for CI
+- **CLI:** Rust
+- **Mutation engine:** source rewriting with a fixed rule set — deterministic,
+  no AI in the analysis path
+- **Execution:** LiteSVM (anchor-litesvm) + Solana's official build toolchain
+- **Report:** generated by the CLI, viewable on the demo site
 - **Demo site:** Vite, React, Tailwind v4 — self-hosted fonts, light mode
 
 ---

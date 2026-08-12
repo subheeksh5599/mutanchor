@@ -17,7 +17,7 @@ enum Command {
     Init,
     /// Mutate, build each mutant, and run the suite on LiteSVM
     Run,
-    /// Emit the mutation report (HTML + JSON)
+    /// Emit the mutation report
     Report,
     /// CI mode: fail when surviving mutants exceed a threshold
     Ci,
