@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: never
+
+jobs:
+  build-test:
+    name: Build, test, lint, audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: fmt
+        run: cargo fmt --all -- --check
+
+      - name: clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: build
+        run: cargo build --release
+
+      - name: test
+        run: cargo test --all
+
+      - name: cargo audit
+        uses: rustsec/audit-check@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  demo-mutation-report:
+    name: Run mutator on demo program + publish report artifact
+    runs-on: ubuntu-latest
+    needs: build-test
+    if: github.ref == 'refs/heads/main'
+    env:
+      # Pin if a specific release is required; otherwise latest.
+      SOLANA_VERSION: stable
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Solana toolchain (cargo-build-sbf)
+        run: |
+          sh -c "$(curl -sSfL https://release.solana.com/v2.1.0/install)"
+          export PATH="$HOME/.local/share/solana/install/active_release/bin:$PATH"
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
+
+      - name: Install SBF target
+        run: |
+          export PATH="$HOME/.local/share/solana/install/active_release/bin:$PATH"
+          rustup toolchain list || true
+
+      - name: Build demo program
+        run: |
+          cd demo/demo-vault
+          cargo build-sbf
+
+      - name: Run mutator (dry-run only; heavy execution is optional per CI)
+        run: |
+          cargo run --quiet -- run demo/demo-vault --out target/mutanchor-ci --timeout 300
+
+      - name: Upload report artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-report
+          path: target/mutanchor-ci/
+
+      # Fail the build if more than 1 surviving mutant slips through.
+      - name: Mutation score gate
+        run: |
+          cargo run --quiet -- ci demo/demo-vault --max-survivors 1 || \
+            { echo "::error::mutant survivors exceed threshold"; exit 1; }
