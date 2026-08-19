@@ -108,7 +108,7 @@ fn run_one(cfg: &RunConfig, m: &Mutant, pristine: &Path, tree: &Path) -> MutantR
             let built = build_mutant(cfg, tree, cfg.timeout);
             build_ms = bstart.elapsed().as_millis();
             match built {
-                Ok(()) => {
+                BuildResult::Ok => {
                     let rstart = Instant::now();
                     let ran = run_tests(cfg, m, tree, cfg.timeout);
                     run_ms = rstart.elapsed().as_millis();
@@ -124,9 +124,13 @@ fn run_one(cfg: &RunConfig, m: &Mutant, pristine: &Path, tree: &Path) -> MutantR
                         }
                     }
                 }
-                Err(e) => {
-                    out.first_failure = Some(format!("cargo build-sbf failed: {e}"));
+                BuildResult::Failed(reason) => {
+                    out.first_failure = Some(format!("cargo build-sbf failed: {reason}"));
                     Verdict::BuildFailed
+                }
+                BuildResult::TimedOut => {
+                    out.first_failure = Some("cargo build-sbf timed out".to_string());
+                    Verdict::TimedOut
                 }
             }
         }
@@ -192,7 +196,16 @@ fn copy_dir(src: &Path, dst: &Path) -> Result<()> {
 }
 
 /// Run `cargo build-sbf` in the scratch tree with a hard timeout.
-fn build_mutant(cfg: &RunConfig, scratch_root: &Path, timeout: Duration) -> Result<()> {
+/// Outcome of building a single mutant. Timed-out builds are distinguished
+/// from genuine compile failures so the verdict is honest (a build that was
+/// still compiling when killed is `TimedOut`, not `BuildFailed`).
+enum BuildResult {
+    Ok,
+    Failed(String),
+    TimedOut,
+}
+
+fn build_mutant(cfg: &RunConfig, scratch_root: &Path, timeout: Duration) -> BuildResult {
     let _ = cfg;
     let manifest = scratch_root.join("Cargo.toml");
     let out_dir = scratch_root.join("target").join("deploy");
@@ -204,22 +217,35 @@ fn build_mutant(cfg: &RunConfig, scratch_root: &Path, timeout: Duration) -> Resu
         .arg(&out_dir)
         .env("CARGO_TERM_COLOR", "never");
 
-    let (code, ok, output) = run_impl(&mut cmd, timeout)
-        .map_err(|e| anyhow::anyhow!("failed to spawn cargo build-sbf: {e}"))?;
+    let (code, ok, output) = match run_impl(&mut cmd, timeout) {
+        Ok(r) => r,
+        Err(e) => return BuildResult::Failed(format!("failed to spawn cargo build-sbf: {e}")),
+    };
 
     if ok {
-        return Ok(());
+        return BuildResult::Ok;
+    }
+    if code.is_none() {
+        // run_impl returned None exit code when it killed the child on timeout.
+        return BuildResult::TimedOut;
     }
 
     // The build failed. Surface the real stderr (so an environment failure
     // like "no space left on device" is distinguishable from a genuine
     // compile error in the mutant).
-    let tail: String = output.rsplit('\n').take(12).collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>().join("\n");
-    anyhow::bail!(
+    let tail: String = output
+        .rsplit('\n')
+        .take(12)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect::<Vec<_>>()
+        .join("\n");
+    BuildResult::Failed(format!(
         "cargo build-sbf exited {} — tail:\n{}",
-        code.map(|c| c.to_string()).unwrap_or_else(|| "timeout".into()),
+        code.map(|c| c.to_string()).unwrap_or_else(|| "?".into()),
         tail.trim_end()
-    )
+    ))
 }
 
 /// Run the program's own tests against the freshly built program. The tests
