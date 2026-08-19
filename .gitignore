@@ -1,5 +1,6 @@
 # Rust
 /target
+**/target
 **/*.rs.bk
 
 # Env
@@ -14,6 +15,12 @@ node_modules
 dist
 .next
 out
+
+# Build artifacts / reports (generated, never committed)
+report.json
+report-full.json
+dashboard.json
+report.html
 
 # Misc
 .DS_Store
