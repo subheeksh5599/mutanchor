@@ -4,17 +4,7 @@
 //! tests each mutant on LiteSVM; `report` renders the scorecard; `ci` fails
 //! the build when surviving mutants exceed a threshold.
 
-// The mutation-engine push callback has one fixed, intentional signature
-// (operator + location + original + mutated + instruction). It is verbose by
-// design; the alias keeps call sites identical across all eight operators.
-#![allow(clippy::type_complexity)]
-
-mod engine;
-mod init;
-mod model;
-mod ops;
-mod report;
-mod runner;
+use mutanchor::{engine, init, report};
 
 use std::path::PathBuf;
 use std::time::Duration;

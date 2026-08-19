@@ -36,14 +36,13 @@ pub struct Manifest {
 /// - Standalone crate: `root/Anchor.toml` (or no Anchor.toml) with the program
 ///   source directly in `root/src/lib.rs`.
 pub fn find_program_dir(root: &Path) -> Result<PathBuf> {
-    let root_is_standalone = root.join("src").join("lib.rs").exists()
-        && {
-            let ct = root.join("Cargo.toml");
-            ct.exists()
-                && fs::read_to_string(&ct)
-                    .map(|t| t.contains("anchor-lang"))
-                    .unwrap_or(false)
-        };
+    let root_is_standalone = root.join("src").join("lib.rs").exists() && {
+        let ct = root.join("Cargo.toml");
+        ct.exists()
+            && fs::read_to_string(&ct)
+                .map(|t| t.contains("anchor-lang"))
+                .unwrap_or(false)
+    };
 
     let anchor_toml = root.join("Anchor.toml");
     if anchor_toml.exists() && !root_is_standalone {
