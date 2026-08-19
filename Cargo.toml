@@ -2,9 +2,14 @@
 name = "mutanchor"
 version = "0.1.0"
 edition = "2021"
-description = "Mutation testing for Solana Anchor programs"
+description = "Mutation testing for Solana Anchor programs: break your source on purpose, run the suite on LiteSVM, and see which bugs your tests would miss."
 license = "MIT"
 rust-version = "1.75"
+readme = "README.md"
+repository = "https://github.com/subheeksh5599/mutanchor"
+homepage = "https://mutanchor.vercel.app"
+keywords = ["solana", "anchor", "mutation-testing", "testing", "litesvm"]
+categories = ["development-tools::testing", "command-line-utilities"]
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
