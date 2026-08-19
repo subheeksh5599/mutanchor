@@ -48,25 +48,13 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
+      # Officially-maintained action that puts cargo-build-sbf on PATH
+      # reliably (the raw release.solana.com installer did not expose
+      # cargo-build-sbf on the runner).
       - name: Install Solana toolchain (cargo-build-sbf)
-        run: |
-          set -euo pipefail
-          sh -c "$(curl -sSfL --retry 3 https://release.solana.com/v2.1.0/install)"
-          SOL_BIN="$HOME/.local/share/solana/install/active_release/bin"
-          if [ ! -x "$SOL_BIN/cargo-build-sbf" ]; then
-            # Locate the actual binary in case the installer used a different path.
-            REAL=$(find "$HOME/.local/share/solana" -name cargo-build-sbf -type f 2>/dev/null | head -1)
-            if [ -n "$REAL" ]; then
-              SOL_BIN="$(dirname "$REAL")"
-            else
-              echo "::error::cargo-build-sbf not found after solana install"
-              find "$HOME/.local/share/solana" -maxdepth 4 -iname '*build-sbf*' 2>/dev/null || true
-              exit 1
-            fi
-          fi
-          echo "cargo-build-sbf at: $SOL_BIN"
-          echo "$SOL_BIN" >> "$GITHUB_PATH"
-          "$SOL_BIN/cargo-build-sbf" --version || true
+        uses: anza-xyz/solana-toolchain@v4
+        with:
+          solana_version: v2.1.0
 
       - name: Verify cargo-build-sbf is reachable
         run: |
