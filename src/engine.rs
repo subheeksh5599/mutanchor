@@ -305,8 +305,28 @@ pub fn ci(program: &Path, max_survivors: usize, _survivors_only: bool) -> Result
     let r = load_report(&out.join("report.json"))?;
     let survivors = r.survived;
     println!("surviving mutants: {survivors} (max allowed: {max_survivors})");
-    if survivors > max_survivors {
+    if ci_verdict(survivors, max_survivors) {
         anyhow::bail!("CI gate: {survivors} surviving mutants exceeds max of {max_survivors}");
     }
     Ok(())
+}
+
+/// Pure gate decision: true means the build must fail (survivors exceed the
+/// allowed maximum), false means it passes.
+fn ci_verdict(survivors: usize, max_survivors: usize) -> bool {
+    survivors > max_survivors
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ci_fails_only_when_survivors_exceed_max() {
+        assert!(!ci_verdict(0, 0), "0 survivors with max 0 must pass");
+        assert!(!ci_verdict(1, 1), "at max must pass");
+        assert!(!ci_verdict(0, 1), "under max must pass");
+        assert!(ci_verdict(2, 1), "over max must fail");
+        assert!(ci_verdict(3, 0), "any survivor with max 0 must fail");
+    }
 }
