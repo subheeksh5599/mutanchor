@@ -1,0 +1,10 @@
+[features]
+seeds = true
+skip-lint = false
+
+[programs.localnet]
+demo_vault = "6xebaTYCQxo6Hsrs9mLh2Z3b2YH3bySw971U4ZDTEFp7"
+
+[provider]
+cluster = "Localnet"
+wallet = "~/.config/solana/id.json"

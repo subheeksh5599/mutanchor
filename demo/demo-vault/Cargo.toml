@@ -1,0 +1,23 @@
+[package]
+name = "demo_vault"
+version = "0.1.0"
+description = "Deliberately small Anchor vault used to exercise and unit-test the Mutanchor mutation-testing engine."
+edition = "2021"
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[dependencies]
+anchor-lang = "0.31.0"
+
+[dev-dependencies]
+anchor-lang = { version = "0.31.0", features = ["derive"] }
+anchor-litesvm = "0.2.0"
+solana-program = "2"
+solana-sdk = "2"
+
+[profile.release]
+lto = true
+opt-level = "s"
+overflow-checks = true
