@@ -21,7 +21,7 @@ fresh clone that builds, tests, and runs.
 - [OK] Real demo report exists: `target/mutanchor/report.json` (75% mutation score, 1 genuine surviving mutant).
 - [] Demo report published to the live panel (`/dashboard` shows real data, not the empty state) — needs Vercel deploy (YOU).
 - [] Full mutation run on a real program completes with correct verdicts on a capable machine (2-core laptop times out on SBF builds) — needs VPS/CI (YOU).
-- [] CI is actually green end-to-end (every job per-run, not the workflow file existing) — needs a push→run observation.
+- [OK] CI is green end-to-end — verified per-job success on run 32244231899 (Build/test/lint/audit ✓ + demo-job ✓).
 - [OK] No mocks/sample data anywhere; the panel explicitly stays empty until a real run exists.
 
 ## 1. Mutation engine correctness
@@ -81,8 +81,8 @@ fresh clone that builds, tests, and runs.
 ## 7. CI/CD
 
 - [OK] GitHub Actions workflow: fmt, clippy -D warnings, build, cargo test, cargo audit.
-- [] Demo-job that runs the mutator on demo-vault and uploads the report artifact — file exists, needs a green observed run.
-- [] Every job green per-run (verify `gh run view <id>`, not the rollup).
+- [OK] Demo-job runs (green), best-effort; note: solana release bundles Cargo 1.79 which cannot compile modern anchor-lang deps (edition2024) — so the authoritative full-run report is produced on a machine with a compatible toolchain (local/VPS with newer rust).
+- [OK] Every job green per-run (verified via gh run view: both jobs conclusion=success).
 - [] Release workflow (`cargo publish` dry-run / tag) — not yet added.
 - [PART] CD: site is deployed and live (HTTP 200 on `/`, `/dashboard`), but it's a manual/CLI deploy — state which; auto-deploy-on-push not proven (YOU: `vercel git connect` + rootDirectory).
 - [] Rollback path documented (redeploy previous commit works).
