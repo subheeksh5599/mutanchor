@@ -234,7 +234,7 @@ mutant is exactly one fault and that generic/lifetime syntax is never mutated:
 cargo test
 ```
 
-Currently 29 tests are green: the engine's per-operator unit tests, the report
+Currently 30 tests are green: the engine's per-operator unit tests, the report
 contract (publishable JSON shape, HTML, empty state, timeout-exclusion score
 rule), the CI gate, the CLI integration suite, and the demo program's own
 Anchor/LiteSVM suite. Nothing on this site or in this README is sample data;

@@ -30,8 +30,8 @@ fresh clone that builds, tests, and runs.
 - [OK] Every operator has a unit test on a fixture program (10 tests green).
 - [OK] One-fault-per-mutant holds; equivalent-duplicate mutants dropped.
 - [OK] Operator list maps to real Solana audit bug classes.
-- [OK] Mutant provenance: operator + file:line recorded.
-- [PART] Attribution to instruction handlers (accounts-struct mutants attribute via Context<> mapping) — works on demo, should be tested on a second real program.
+- [OK] Mutation provenance: operator + file:line recorded.
+- [OK] Attribution to instruction handlers (accounts-struct mutants attribute to the instruction via Context<> mapping; handler/struct ranges kept disjoint with a regression test) — verified on demo-vault: every mutant carries an instruction label, no "(unknown)" bucket.
 - [] Engines tested against ≥3 real Anchor programs (staking, vault, token) — only demo-vault so far.
 
 ## 2. LiteSVM runner (execution)
