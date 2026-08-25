@@ -210,3 +210,101 @@ fn unauthorized_close_reverts() {
     let v: demo_vault::Vault = ctx.get_account(&vault).unwrap();
     assert_eq!(v.balance, 1_000);
 }
+
+#[test]
+fn deposit_zero_amount_reverts() {
+    let mut ctx = setup();
+    let authority = ctx.create_funded_account(10_000_000_000).unwrap();
+    let vault = ensure_vault(&mut ctx, &authority);
+
+    // Zero-amount deposits must be rejected (`amount > 0` guard).
+    let result = ctx
+        .execute_instruction(deposit_ix(vault, authority.pubkey(), 0), &[&authority])
+        .unwrap();
+    result.assert_failure();
+
+    let v: demo_vault::Vault = ctx.get_account(&vault).unwrap();
+    assert_eq!(v.balance, 0);
+}
+
+#[test]
+fn withdraw_zero_amount_reverts() {
+    let mut ctx = setup();
+    let authority = ctx.create_funded_account(10_000_000_000).unwrap();
+    let vault = ensure_vault(&mut ctx, &authority);
+
+    ctx.execute_instruction(deposit_ix(vault, authority.pubkey(), 1_000), &[&authority])
+        .unwrap()
+        .assert_success();
+
+    // Zero-amount withdrawals must be rejected.
+    let result = ctx
+        .execute_instruction(withdraw_ix(vault, authority.pubkey(), 0), &[&authority])
+        .unwrap();
+    result.assert_failure();
+
+    let v: demo_vault::Vault = ctx.get_account(&vault).unwrap();
+    assert_eq!(v.balance, 1_000);
+}
+
+#[test]
+fn pay_zero_amount_reverts() {
+    let mut ctx = setup();
+    let authority = ctx.create_funded_account(10_000_000_000).unwrap();
+    let recipient = ctx.create_funded_account(0).unwrap();
+
+    let result = ctx
+        .execute_instruction(pay_ix(authority.pubkey(), recipient.pubkey(), 0), &[&authority])
+        .unwrap();
+    result.assert_failure();
+}
+
+#[test]
+fn withdraw_exact_balance_succeeds() {
+    let mut ctx = setup();
+    let authority = ctx.create_funded_account(10_000_000_000).unwrap();
+    let vault = ensure_vault(&mut ctx, &authority);
+
+    ctx.execute_instruction(deposit_ix(vault, authority.pubkey(), 1_000), &[&authority])
+        .unwrap()
+        .assert_success();
+
+    // Withdrawing exactly the recorded balance must succeed (`<=` boundary).
+    ctx.execute_instruction(withdraw_ix(vault, authority.pubkey(), 1_000), &[&authority])
+        .unwrap()
+        .assert_success();
+
+    let v: demo_vault::Vault = ctx.get_account(&vault).unwrap();
+    assert_eq!(v.balance, 0);
+}
+
+#[test]
+fn close_succeeds_for_owner_and_transfers_lamports() {
+    let mut ctx = setup();
+    let owner = ctx.create_funded_account(10_000_000_000).unwrap();
+    let vault = ensure_vault(&mut ctx, &owner);
+
+    ctx.execute_instruction(deposit_ix(vault, owner.pubkey(), 2_000), &[&owner])
+        .unwrap()
+        .assert_success();
+
+    let vault_lamports_before = ctx.svm.get_account(&vault).unwrap().lamports;
+    let owner_lamports_before = ctx.svm.get_account(&owner.pubkey()).unwrap().lamports;
+
+    ctx.execute_instruction(close_ix(vault, owner.pubkey()), &[&owner])
+        .unwrap()
+        .assert_success();
+
+    // The vault is closed: its lamports went to the owner and the account
+    // data was wiped (LiteSVM keeps a zeroed entry; the close semantic is
+    // lamports == 0, not entry absence).
+    let closed = ctx.svm.get_account(&vault).unwrap();
+    assert_eq!(closed.lamports, 0);
+    let owner_lamports_after = ctx.svm.get_account(&owner.pubkey()).unwrap().lamports;
+    // The owner receives the vault's lamports minus the deterministic 5000
+    // LiteSVM base fee (the owner signs the close transaction).
+    assert_eq!(
+        owner_lamports_after - owner_lamports_before,
+        vault_lamports_before - 5_000
+    );
+}
