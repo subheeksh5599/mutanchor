@@ -30,7 +30,7 @@ export interface MutationReport {
 
 export async function loadReport(): Promise<MutationReport | null> {
   try {
-    const res = await fetch("report.json", { cache: "no-store" });
+    const res = await fetch("/report.json", { cache: "no-store" });
     if (!res.ok) return null;
     return (await res.json()) as MutationReport;
   } catch {
