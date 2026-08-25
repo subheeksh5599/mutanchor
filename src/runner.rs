@@ -133,7 +133,14 @@ pub fn run_mutants(
 
 /// Last `n` lines of a combined output blob (for honest error tails).
 fn tail(blob: &str, n: usize) -> String {
-    blob.lines().rev().take(n).collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>().join("\n")
+    blob.lines()
+        .rev()
+        .take(n)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// Execute a single mutant against the shared scratch tree. The mutation is
