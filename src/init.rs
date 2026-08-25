@@ -121,9 +121,14 @@ fn find_instructions(text: &str, program_dir: &Path, lib: &Path) -> Result<Vec<I
         }
     }
 
-    // For each handler, find the Accounts struct it uses (via `Context<X>`)
-    // and record both the handler range and the struct range so mutants in
-    // account constraints attribute to the instruction.
+    // For each handler, record its BODY range and map the Accounts struct it
+    // uses (`Context<X>`) to the instruction name. Handler ranges and struct
+    // ranges are emitted as SEPARATE, disjoint entries: a mutant line inside a
+    // handler body belongs to that handler, a line inside an Accounts struct
+    // belongs to the instruction that uses the struct. (Unioning the two into
+    // one contiguous range would make ranges overlap — the first match in
+    // `attribute` would then win for lines that sit in multiple unions.)
+    let mut struct_uses: Vec<(String, String)> = Vec::new(); // (instruction, struct_name)
     let mut pairs: Vec<(String, std::ops::Range<usize>)> = Vec::new();
     for item in &file.items {
         if let syn::Item::Mod(m) = item {
@@ -139,44 +144,44 @@ fn find_instructions(text: &str, program_dir: &Path, lib: &Path) -> Result<Vec<I
             for it in items {
                 if let syn::Item::Fn(f) = it {
                     let name = f.sig.ident.to_string();
-                    let mut range = fn_range(f);
-                    // Find `Context<X>` in the signature.
+                    pairs.push((name.clone(), fn_range(f)));
                     if let Some(struct_name) = context_struct(&f.sig) {
-                        if let Some((_, r)) = structs.iter().find(|(n, _)| n == &struct_name) {
-                            range = range.start.min(r.start)..range.end.max(r.end);
-                        }
+                        struct_uses.push((name, struct_name));
                     }
-                    pairs.push((name, range));
                 }
             }
         }
     }
 
-    // Accounts structs referenced by a handler get their constraint lines
-    // attributed to that instruction. Structs not yet covered are matched to
-    // whichever handler they sit inside.
-    let mut unions: Vec<(String, std::ops::Range<usize>)> = Vec::new();
+    // Emit each referenced Accounts struct's range under its instruction name.
+    let mut struct_ranges: Vec<(String, std::ops::Range<usize>)> = struct_uses
+        .iter()
+        .filter_map(|(instr, struct_name)| {
+            structs
+                .iter()
+                .find(|(n, _)| n == struct_name)
+                .map(|(_, r)| (instr.clone(), r.clone()))
+        })
+        .collect();
+
+    // Structs not referenced by any handler still get attributed: match them
+    // to whichever handler they sit inside.
     for (name, range) in &structs {
-        let already_keyed = pairs
-            .iter()
-            .any(|(n, r)| n == name || r.start == range.start);
+        let already_keyed = struct_uses.iter().any(|(_, s)| s == name);
         if already_keyed {
             continue;
         }
-        // Find a handler whose range contains the struct, then union them.
         for (n, r) in &pairs {
             if r.contains(&range.start) {
                 let union = r.start.min(range.start)..r.end.max(range.end);
-                unions.push((n.clone(), union));
+                struct_ranges.push((n.clone(), union));
                 break;
             }
         }
     }
-    for (n, u) in unions {
-        if let Some(e) = pairs.iter_mut().find(|(nn, _)| *nn == n) {
-            e.1 = u;
-        }
-    }
+
+    pairs.extend(struct_ranges);
+    pairs.sort_by(|a, b| a.1.start.cmp(&b.1.start));
 
     for (name, range) in pairs {
         instructions.push(Instruction {
@@ -199,7 +204,11 @@ fn context_struct(sig: &syn::Signature) -> Option<String> {
     for input in &sig.inputs {
         if let syn::FnArg::Typed(pat) = input {
             if let syn::Type::Path(tp) = &*pat.ty {
-                if tp.path.is_ident("Context") {
+                // NOTE: `Path::is_ident("Context")` would be WRONG here — it
+                // requires the path to carry NO generic arguments, so
+                // `Context<Deposit>` never matches. Check the first segment.
+                let first = tp.path.segments.first().map(|s| s.ident.to_string());
+                if first.as_deref() == Some("Context") {
                     if let syn::PathArguments::AngleBracketed(ab) =
                         &tp.path.segments.last()?.arguments
                     {
@@ -229,4 +238,82 @@ fn fn_range(f: &syn::ItemFn) -> std::ops::Range<usize> {
         end = close_line;
     }
     start..end.max(start + 1)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    // A minimal Anchor program: one handler + one Accounts struct.
+    // Note: the struct's constraint lines come AFTER the handler in the
+    // file, so only a working Context<> union attributes them correctly.
+    const SRC: &str = r#"
+use anchor_lang::prelude::*;
+
+#[program]
+pub mod vault {
+    use super::*;
+    pub fn deposit(ctx: Context<Deposit>, amount: u64) -> Result<()> {
+        require!(amount > 0, VaultError::Zero);
+        Ok(())
+    }
+}
+
+#[derive(Accounts)]
+pub struct Deposit<'info> {
+    #[account(
+        mut,
+        seeds = [b"vault", authority.key().as_ref()],
+        bump
+    )]
+    pub vault: Account<'info, Vault>,
+    pub authority: Signer<'info>,
+}
+
+#[account]
+pub struct Vault {
+    pub balance: u64,
+}
+
+#[error_code]
+pub enum VaultError {
+    #[msg("zero")]
+    Zero,
+}
+"#;
+
+    #[test]
+    fn account_struct_constraint_lines_attribute_to_the_using_instruction() {
+        let lib = PathBuf::from("/proj/src/lib.rs");
+        let instructions = find_instructions(SRC, &PathBuf::from("/proj"), &lib).unwrap();
+        // "deposit" gets TWO disjoint ranges: its handler body and the
+        // Accounts struct it uses via Context<Deposit>.
+        let deposit: Vec<_> = instructions
+            .iter()
+            .filter(|i| i.name == "deposit")
+            .collect();
+        assert_eq!(
+            deposit.len(),
+            2,
+            "handler range + struct range both attributed"
+        );
+        let handler = deposit
+            .iter()
+            .find(|i| i.range.contains(&8))
+            .expect("handler range covers the require! line");
+        let struct_range = deposit
+            .iter()
+            .find(|i| i.range.contains(&17))
+            .expect("struct range covers the seeds constraint line");
+        // The two ranges must not overlap: a handler-body mutant belongs to
+        // the handler, a struct-constraint mutant to the struct, never both.
+        assert!(
+            handler.range.end <= struct_range.range.start,
+            "ranges must be disjoint: {:?} vs {:?}",
+            handler.range,
+            struct_range.range
+        );
+        assert_eq!(instructions.len(), 2);
+    }
 }
