@@ -181,7 +181,7 @@ fn find_instructions(text: &str, program_dir: &Path, lib: &Path) -> Result<Vec<I
     }
 
     pairs.extend(struct_ranges);
-    pairs.sort_by(|a, b| a.1.start.cmp(&b.1.start));
+    pairs.sort_by_key(|p| p.1.start);
 
     for (name, range) in pairs {
         instructions.push(Instruction {
