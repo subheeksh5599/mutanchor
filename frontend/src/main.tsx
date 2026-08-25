@@ -7,7 +7,7 @@ import "@fontsource/ibm-plex-mono/400.css";
 import "@fontsource/ibm-plex-mono/500.css";
 import "./index.css";
 import { Grain } from "./components/Grain";
-import Landing from "./pages/Landing";
+import Docs from "./pages/Docs";
 import Dashboard from "./pages/Dashboard";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
@@ -15,7 +15,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
     <BrowserRouter>
       <Grain />
       <Routes>
-        <Route path="/" element={<Landing />} />
+        <Route path="/" element={<Docs />} />
         <Route path="/dashboard" element={<Dashboard />} />
       </Routes>
     </BrowserRouter>

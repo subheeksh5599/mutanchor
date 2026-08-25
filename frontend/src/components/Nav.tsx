@@ -1,9 +1,9 @@
 import { Link } from "react-router-dom";
 
 const anchors = [
-  { href: "/#problem", label: "Problem" },
-  { href: "/#mechanism", label: "Mechanism" },
+  { href: "/#quickstart", label: "Quickstart" },
   { href: "/#operators", label: "Operators" },
+  { href: "/#cli", label: "CLI" },
   { href: "/#report", label: "Report" },
 ];
 

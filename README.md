@@ -214,7 +214,7 @@ audit corpus says bugs live.
 |---|---|
 | **CLI scaffold** — init / run / report / ci | **Real** — builds, runs, output above |
 | **Fresh-clone build** — `cargo check` on clean clone | **Real** — verified |
-| **Demo site** — landing + report panel, one URL | **Real** — live at [mutanchor.vercel.app](https://mutanchor.vercel.app) |
+| **Demo site** — docs + live report panel, one URL | **Real** — docs-first site (install/quickstart/operators/CLI/report) at [mutanchor.vercel.app](https://mutanchor.vercel.app), live panel at [/dashboard](https://mutanchor.vercel.app/dashboard) |
 | **Source rewriting** — one change per mutant | **Real** — engine implemented, unit-tested |
 | **Operators** — 8 implemented | **Real** — all 8 implemented, unit-tested on fixture programs |
 | **LiteSVM runner** — build pipeline + classification | **Real** — implemented; run against the demo program (see below) |
