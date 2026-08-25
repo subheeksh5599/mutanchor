@@ -66,7 +66,17 @@ function ReportView({ report }: { report: MutationReport }) {
           </h1>
         </div>
         <p className="font-mono text-[0.7rem] uppercase tracking-[0.16em] text-ink/50">
-          generated {new Date(report.generatedAt).toLocaleString()}
+          generated{" "}
+          {new Date(report.generatedAt).toLocaleString("en-GB", {
+            timeZone: "UTC",
+            year: "numeric",
+            month: "short",
+            day: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
+          })}{" "}
+          UTC
         </p>
       </div>
 
