@@ -161,15 +161,17 @@ pub struct InstructionScore {
 }
 
 impl InstructionScore {
-    /// Ratio of non-surviving verdicts to all meaningful verdicts. Survived
-    /// drags it down; build-failed and timeout are counted as non-escapes
-    /// because they never produced a passing test run.
+    /// Ratio of non-surviving verdicts to all MEANINGFUL verdicts. Survived
+    /// drags it down; build-failed counts as a non-escape (the mutation
+    /// provably broke the build). Timeouts are INCONCLUSIVE — we learned
+    /// nothing — so they are excluded from the denominator entirely instead
+    /// of being counted as escapes or non-escapes.
     pub fn score(&self) -> f64 {
-        let denom = self.killed + self.survived + self.build_failed + self.timed_out;
+        let denom = self.killed + self.survived + self.build_failed;
         if denom == 0 {
             0.0
         } else {
-            (self.killed + self.build_failed + self.timed_out) as f64 / denom as f64
+            (self.killed + self.build_failed) as f64 / denom as f64
         }
     }
 }
@@ -191,14 +193,16 @@ pub struct Report {
 }
 
 impl Report {
-    /// Overall mutation score: fraction of mutants that did NOT survive
-    /// (i.e. the test suite actually proved something about them).
+    /// Overall mutation score: fraction of MEANINGFUL verdicts that did NOT
+    /// survive (i.e. the test suite actually proved something about them).
+    /// Same semantics as `InstructionScore::score`: build-failed counts as
+    /// a non-escape, timeouts are inconclusive and excluded.
     pub fn score(&self) -> f64 {
-        let denom = self.killed + self.survived + self.build_failed + self.timed_out;
+        let denom = self.killed + self.survived + self.build_failed;
         if denom == 0 {
             0.0
         } else {
-            (self.killed + self.build_failed + self.timed_out) as f64 / denom as f64
+            (self.killed + self.build_failed) as f64 / denom as f64
         }
     }
 

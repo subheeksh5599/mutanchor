@@ -18,7 +18,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{Duration, Instant};
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 
 use crate::model::{Mutant, MutantResult, Operator, Verdict};
 
@@ -74,6 +74,47 @@ pub fn run_mutants(
     let tree = cfg.work_dir.join("tree");
     copy_dir(&pristine, &tree)?;
 
+    // Prime the incremental build cache: build the pristine (unmutated)
+    // program and compile+run its test suite once in the tree. All 13+
+    // mutants then only recompile the mutated crate instead of the entire
+    // dependency tree, which is what makes runs practical on small hosts.
+    // If the pristine program does not build or its tests do not pass, fail
+    // fast with the tail — a run on a broken program cannot produce honest
+    // verdicts anyway.
+    log("priming incremental build cache (pristine build + test)…");
+    let so = tree
+        .join("target")
+        .join("deploy")
+        .join(program_so_name(cfg));
+    let manifest = tree.join("Cargo.toml");
+    let warm_timeout = Duration::from_secs(900);
+    let mut wb = Command::new("cargo");
+    wb.args(["build-sbf", "--manifest-path"])
+        .arg(&manifest)
+        .env("CARGO_TERM_COLOR", "never");
+    let (_, ok, out) = run_impl(&mut wb, warm_timeout)?;
+    if !ok {
+        bail!(
+            "warm-up `cargo build-sbf` failed — cannot run mutants against a \
+             program that does not build:\n{}",
+            tail(&out, 15)
+        );
+    }
+    let mut wt = Command::new("cargo");
+    wt.args(["test", "--manifest-path"])
+        .arg(&manifest)
+        .env("MUTANCHOR_PROGRAM_SO", &so)
+        .env("CARGO_TERM_COLOR", "never");
+    let (_, ok, out) = run_impl(&mut wt, warm_timeout)?;
+    if !ok {
+        bail!(
+            "warm-up `cargo test` failed — cannot run mutants against a \
+             program whose pristine test suite does not pass:\n{}",
+            tail(&out, 15)
+        );
+    }
+    log("cache primed");
+
     let mut results = Vec::with_capacity(total);
     for (i, m) in mutants.iter().enumerate() {
         log(&format!(
@@ -88,6 +129,11 @@ pub fn run_mutants(
     }
 
     Ok(results)
+}
+
+/// Last `n` lines of a combined output blob (for honest error tails).
+fn tail(blob: &str, n: usize) -> String {
+    blob.lines().rev().take(n).collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>().join("\n")
 }
 
 /// Execute a single mutant against the shared scratch tree. The mutation is
@@ -140,9 +186,8 @@ fn run_one(cfg: &RunConfig, m: &Mutant, pristine: &Path, tree: &Path) -> MutantR
         }
     };
 
-    // Restore the tree for the next mutant.
-    let _ = std::fs::remove_dir_all(tree);
-    let _ = copy_dir(pristine, tree);
+    // Restore the tree for the next mutant, keeping the warm target/ cache.
+    let _ = restore_tree(pristine, tree);
 
     out.verdict = result;
     out.build_ms = build_ms;
@@ -173,6 +218,8 @@ fn write_mutant_source(_cfg: &RunConfig, m: &Mutant, scratch_root: &Path) -> Res
 }
 
 /// Recursively copy a directory tree, skipping target/, .git and node_modules.
+/// File mtimes are preserved so Cargo's fingerprint cache (which compares
+/// source mtimes against stored fingerprints) stays valid across restores.
 fn copy_dir(src: &Path, dst: &Path) -> Result<()> {
     use std::fs;
     fs::create_dir_all(dst).with_context(|| format!("mkdir {}", dst.display()))?;
@@ -188,8 +235,59 @@ fn copy_dir(src: &Path, dst: &Path) -> Result<()> {
         if ftype.is_dir() {
             copy_dir(&from, &to)?;
         } else {
-            fs::copy(&from, &to)
-                .with_context(|| format!("copy {} -> {}", from.display(), to.display()))?;
+            copy_file(&from, &to)?;
+        }
+    }
+    Ok(())
+}
+
+/// Copy one file preserving its mtime (Cargo fingerprints are mtime-based).
+fn copy_file(from: &Path, to: &Path) -> Result<()> {
+    use std::fs;
+    let meta = fs::metadata(from)?;
+    fs::copy(from, to)?;
+    let times = std::fs::FileTimes::new().set_modified(meta.modified()?);
+    fs::File::options()
+        .write(true)
+        .open(to)?
+        .set_times(times)
+        .with_context(|| format!("set mtime on {}", to.display()))?;
+    Ok(())
+}
+
+/// Restore the scratch tree from pristine WITHOUT wiping `target/`, so the
+/// incremental build cache survives from one mutant to the next. Only the
+/// (non-target) source files are replaced; their mtimes are preserved, and
+/// the mutant edit (written afterwards by `write_mutant_source`) is the only
+/// file newer than the cached fingerprints — so `cargo build-sbf` / `cargo
+/// test` recompile just the mutated crate and relink the test binary.
+fn restore_tree(pristine: &Path, tree: &Path) -> Result<()> {
+    use std::fs;
+    for entry in fs::read_dir(tree).with_context(|| format!("read {}", tree.display()))? {
+        let entry = entry?;
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if name == "target" {
+            continue;
+        }
+        let path = tree.join(&name);
+        if path.is_dir() {
+            fs::remove_dir_all(&path)?;
+        } else {
+            fs::remove_file(&path)?;
+        }
+    }
+    for entry in fs::read_dir(pristine).with_context(|| format!("read {}", pristine.display()))? {
+        let entry = entry?;
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if name == "target" || name == ".git" || name == "node_modules" || name == ".anchor" {
+            continue;
+        }
+        let from = entry.path();
+        let to = tree.join(&name);
+        if entry.file_type()?.is_dir() {
+            copy_dir(&from, &to)?;
+        } else {
+            copy_file(&from, &to)?;
         }
     }
     Ok(())

@@ -165,3 +165,23 @@ fn empty_report_renders_empty_state_not_fabricated_data() {
     // Empty score render should not crash.
     let _ = to_publish_json(&empty);
 }
+
+#[test]
+fn all_timeout_report_scores_zero_not_vacuous_one() {
+    // A run where every mutant timed out learned nothing: the score must be
+    // 0.0 (inconclusive), never a vacuous 100%. This pins the honesty rule.
+    let report = Report {
+        program: "demo_vault".to_string(),
+        generated_at: "2026-08-19T00:00:00Z".to_string(),
+        mutants_total: 13,
+        killed: 0,
+        survived: 0,
+        build_failed: 0,
+        timed_out: 13,
+        dropped_equivalent: 0,
+        per_instruction: vec![],
+        survivors: vec![],
+        mutants: vec![],
+    };
+    assert_eq!(report.score(), 0.0);
+}
