@@ -33,7 +33,7 @@ export function Nav() {
         </nav>
         <Link
           to="/dashboard"
-          className="border-2 border-ink bg-chartreuse px-3.5 py-1.5 text-[0.72rem] font-medium uppercase tracking-[0.14em] text-ink transition-transform hover:-translate-y-0.5"
+          className="border-2 border-ink bg-accent px-3.5 py-1.5 text-[0.72rem] font-medium uppercase tracking-[0.14em] text-ink transition-transform hover:-translate-y-0.5"
         >
           Open report
         </Link>

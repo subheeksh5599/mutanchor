@@ -3,7 +3,7 @@
 # Mutanchor
 
 [![CI](https://github.com/subheeksh5599/mutanchor/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/subheeksh5599/mutanchor/actions/workflows/ci.yml)
-[![Live demo](https://img.shields.io/badge/live-mutanchor.vercel.app-D9FF00)](https://mutanchor.vercel.app)
+[![Live demo](https://img.shields.io/badge/live-mutanchor.vercel.app-c8a24a)](https://mutanchor.vercel.app)
 [![License: MIT](https://img.shields.io/badge/license-MIT-14151a.svg)](LICENSE)
 ![Language](https://img.shields.io/badge/Rust%202021-14151a)
 ![Target](https://img.shields.io/badge/Solana%20Anchor-14151a)

@@ -1,11 +1,13 @@
 @import "tailwindcss";
 
 @theme {
-  --color-bone: #edeae3;
-  --color-ink: #0a0a0a;
-  --color-chartreuse: #d9ff00;
-  --color-danger: #ff4d00;
-  --color-pitch: #0b1a0e;
+  --color-bone: #ede9e0;
+  --color-paper: #f5f2ec;
+  --color-ink: #14151a;
+  --color-accent: #c8a24a;
+  --color-accent-soft: #ead9a8;
+  --color-danger: #b53d2f;
+  --color-pitch: #171a1f;
   --font-display: "Oswald", "Arial Narrow", sans-serif;
   --font-serifit: "Instrument Serif", Georgia, serif;
   --font-mono: "IBM Plex Mono", ui-monospace, monospace;
@@ -21,7 +23,7 @@ body {
 }
 
 ::selection {
-  background: var(--color-chartreuse);
+  background: var(--color-accent);
   color: var(--color-ink);
 }
 
@@ -63,7 +65,7 @@ body {
 }
 
 .step-cell.is-active {
-  background: var(--color-chartreuse);
+  background: var(--color-accent);
   border-color: var(--color-ink);
   transform: translateX(4px);
 }

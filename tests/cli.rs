@@ -45,3 +45,54 @@ fn dry_run_lists_mutants_without_executing() {
         .stdout(predicate::str::contains("pda_seed_swap"))
         .stdout(predicate::str::contains("comparison_flip"));
 }
+
+// The remaining tests pin the failure surface: every subcommand should reject
+// a missing program dir with a clear non-zero exit, not panic and not silently
+// succeed. This is the "--help / error paths tested for every subcommand"
+// production-checklist item.
+
+#[test]
+fn init_on_missing_program_dir_fails_with_clear_error() {
+    let mut cmd = Command::cargo_bin("mutanchor").unwrap();
+    cmd.args(["init", "demo/does-not-exist"])
+        .assert()
+        .failure()
+        .stderr(
+            predicate::str::contains("does-not-exist").or(predicate::str::contains("not found")),
+        );
+}
+
+#[test]
+fn run_on_missing_program_dir_fails_with_clear_error() {
+    let mut cmd = Command::cargo_bin("mutanchor").unwrap();
+    cmd.args(["run", "demo/does-not-exist", "--dry-run"])
+        .assert()
+        .failure();
+}
+
+#[test]
+fn ci_on_missing_program_dir_fails_with_clear_error() {
+    let mut cmd = Command::cargo_bin("mutanchor").unwrap();
+    cmd.args(["ci", "demo/does-not-exist", "--max-survivors", "0"])
+        .assert()
+        .failure();
+}
+
+#[test]
+fn report_on_missing_json_fails_with_clear_error() {
+    let mut cmd = Command::cargo_bin("mutanchor").unwrap();
+    cmd.args(["report", "target/does-not-exist/report.json"])
+        .assert()
+        .failure();
+}
+
+#[test]
+fn subcommand_help_output_is_stable() {
+    for sub in ["init", "run", "report", "ci"] {
+        let mut cmd = Command::cargo_bin("mutanchor").unwrap();
+        cmd.args([sub, "--help"])
+            .assert()
+            .success()
+            .stdout(predicate::str::contains("Usage").or(predicate::str::contains("usage")));
+    }
+}

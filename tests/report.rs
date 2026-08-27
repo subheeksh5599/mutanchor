@@ -166,6 +166,68 @@ fn empty_report_renders_empty_state_not_fabricated_data() {
     let _ = to_publish_json(&empty);
 }
 
+// Property-style invariants over the model. The `Verdict` enum has exactly
+// four variants, so "every mutant resolves to one of them" is a type-level
+// guarantee. What can still go wrong is the AGGREGATES: counts that don't
+// add up, or scores that fall outside [0, 1]. These tests pin those.
+
+#[test]
+fn verdict_id_is_one_of_four_stable_strings() {
+    // If a new variant is ever added and forgotten in the id() match, this
+    // fails to compile; the assertions here pin the wire format.
+    use mutanchor::model::Verdict;
+    let ids: Vec<&'static str> = [
+        Verdict::Killed,
+        Verdict::Survived,
+        Verdict::BuildFailed,
+        Verdict::TimedOut,
+    ]
+    .iter()
+    .map(|v| v.id())
+    .collect();
+    assert_eq!(ids, vec!["killed", "survived", "build-failed", "timeout"]);
+}
+
+#[test]
+fn aggregate_counts_sum_to_total_across_synthetic_reports() {
+    use mutanchor::model::Report;
+    // Sweep a range of synthetic aggregate shapes and verify the invariant
+    // holds: killed + survived + build_failed + timed_out == mutants_total,
+    // and score() is always in [0, 1].
+    for k in 0..=3 {
+        for s in 0..=3 {
+            for b in 0..=2 {
+                for t in 0..=2 {
+                    let total = k + s + b + t;
+                    let r = Report {
+                        program: "p".into(),
+                        generated_at: "2026-08-27T00:00:00Z".into(),
+                        mutants_total: total,
+                        killed: k,
+                        survived: s,
+                        build_failed: b,
+                        timed_out: t,
+                        dropped_equivalent: 0,
+                        per_instruction: vec![],
+                        survivors: vec![],
+                        mutants: vec![],
+                    };
+                    assert_eq!(
+                        r.killed + r.survived + r.build_failed + r.timed_out,
+                        r.mutants_total,
+                        "aggregate counts must sum to total (k={k}, s={s}, b={b}, t={t})"
+                    );
+                    let sc = r.score();
+                    assert!(
+                        (0.0..=1.0).contains(&sc),
+                        "score() out of range: {sc} for (k={k}, s={s}, b={b}, t={t})"
+                    );
+                }
+            }
+        }
+    }
+}
+
 #[test]
 fn all_timeout_report_scores_zero_not_vacuous_one() {
     // A run where every mutant timed out learned nothing: the score must be

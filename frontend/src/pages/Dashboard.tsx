@@ -14,11 +14,11 @@ function StatCell({
 }: {
   label: string;
   value: number | string;
-  tone?: "chartreuse" | "danger" | "plain";
+  tone?: "accent" | "danger" | "plain";
 }) {
   const dot =
-    tone === "chartreuse"
-      ? "bg-chartreuse"
+    tone === "accent"
+      ? "bg-accent"
       : tone === "danger"
         ? "bg-danger"
         : "bg-ink/25";
@@ -81,13 +81,13 @@ function ReportView({ report }: { report: MutationReport }) {
       </div>
 
       <div className="mt-10 grid grid-cols-2 gap-4 md:grid-cols-5">
-        <div className="border-2 border-ink bg-chartreuse p-4">
+        <div className="border-2 border-ink bg-accent p-4 shadow-[6px_6px_0_0_var(--color-ink)]">
           <span className="mono-label">Mutation score</span>
           <div className="display mt-2 text-3xl text-ink">
             {pct(report.mutationScore)}
           </div>
         </div>
-        <StatCell label="Killed" value={report.killed} tone="chartreuse" />
+        <StatCell label="Killed" value={report.killed} tone="accent" />
         <StatCell label="Survived" value={report.survived} tone="danger" />
         <StatCell label="Build failed" value={report.buildFailed} />
         <StatCell label="Timeout" value={report.timeout} />
@@ -125,7 +125,7 @@ function ReportView({ report }: { report: MutationReport }) {
                         className={
                           ins.survived > 0
                             ? "h-full bg-danger/80"
-                            : "h-full bg-chartreuse"
+                            : "h-full bg-accent"
                         }
                         style={{ width: pct(ins.score) }}
                       />
@@ -143,7 +143,7 @@ function ReportView({ report }: { report: MutationReport }) {
 
       <h2 className="display mt-16 text-2xl text-ink">SURVIVING MUTANTS</h2>
       {report.survivors.length === 0 ? (
-        <p className="mt-4 border-l-2 border-chartreuse bg-bone px-5 py-4 text-sm text-ink/75">
+        <p className="mt-4 border-l-2 border-accent bg-bone px-5 py-4 text-sm text-ink/75">
           No survivors. Every mutant was killed by the test suite.
         </p>
       ) : (
