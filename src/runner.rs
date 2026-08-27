@@ -16,11 +16,81 @@
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::{Mutex, Once};
 use std::time::{Duration, Instant};
 
 use anyhow::{bail, Context, Result};
 
 use crate::model::{Mutant, MutantResult, Operator, Verdict};
+
+/// Set to true by the Ctrl-C handler. Every long-running loop checks this
+/// and bails out cleanly; the scratch dir is removed via `ScratchGuard::drop`.
+static SHUTDOWN: AtomicBool = AtomicBool::new(false);
+/// PID of the child cargo/build-sbf process currently being waited on, if any.
+/// The signal handler reads it to send a follow-up SIGTERM so the wait loop
+/// unblocks immediately instead of running out its timeout.
+static CURRENT_CHILD_PID: AtomicU32 = AtomicU32::new(0);
+static INSTALL_HANDLER: Once = Once::new();
+static WORK_DIRS_TO_CLEAN: Mutex<Vec<PathBuf>> = Mutex::new(Vec::new());
+
+fn install_signal_handler() {
+    INSTALL_HANDLER.call_once(|| {
+        let _ = ctrlc::set_handler(move || {
+            // First Ctrl-C: request graceful shutdown. Second Ctrl-C exits hard.
+            if SHUTDOWN.swap(true, Ordering::SeqCst) {
+                eprintln!("\nmutanchor: forced exit on second Ctrl-C");
+                std::process::exit(130);
+            }
+            eprintln!(
+                "\nmutanchor: interrupt received — stopping after this mutant, \
+                 killing in-flight build/test, cleaning scratch dir…"
+            );
+            // Best-effort: SIGTERM the child that's currently blocking the run
+            // loop so it unblocks immediately.
+            #[cfg(unix)]
+            {
+                let pid = CURRENT_CHILD_PID.load(Ordering::SeqCst);
+                if pid != 0 {
+                    unsafe {
+                        libc::kill(pid as i32, libc::SIGTERM);
+                    }
+                }
+            }
+        });
+    });
+}
+
+/// Owns the scratch working directory and removes it when dropped, so a
+/// panic, an early return, or a Ctrl-C never leaves a multi-GB tree behind.
+struct ScratchGuard {
+    path: PathBuf,
+}
+
+impl ScratchGuard {
+    fn new(path: PathBuf) -> Self {
+        if let Ok(mut v) = WORK_DIRS_TO_CLEAN.lock() {
+            v.push(path.clone());
+        }
+        ScratchGuard { path }
+    }
+}
+
+impl Drop for ScratchGuard {
+    fn drop(&mut self) {
+        if self.path.exists() {
+            let _ = std::fs::remove_dir_all(&self.path);
+        }
+        if let Ok(mut v) = WORK_DIRS_TO_CLEAN.lock() {
+            v.retain(|p| p != &self.path);
+        }
+    }
+}
+
+/// Interruption signal: check from long-running loops.
+pub fn was_interrupted() -> bool {
+    SHUTDOWN.load(Ordering::SeqCst)
+}
 
 /// Configuration for a run.
 #[derive(Debug, Clone)]
@@ -61,6 +131,7 @@ pub fn run_mutants(
     mutants: &[Mutant],
     log: &(dyn Fn(&str) + Sync),
 ) -> Result<Vec<MutantResult>> {
+    install_signal_handler();
     let total = mutants.len();
 
     // Clean the scratch root and copy the pristine program tree into it once.
@@ -69,6 +140,8 @@ pub fn run_mutants(
         std::fs::remove_dir_all(&cfg.work_dir).with_context(|| "clean work dir")?;
     }
     std::fs::create_dir_all(&cfg.work_dir).with_context(|| "create work dir")?;
+    // From here on, any early return / panic / Ctrl-C removes work_dir on drop.
+    let _guard = ScratchGuard::new(cfg.work_dir.clone());
     copy_dir(&cfg.program_dir, &pristine)?;
 
     let tree = cfg.work_dir.join("tree");
@@ -117,6 +190,13 @@ pub fn run_mutants(
 
     let mut results = Vec::with_capacity(total);
     for (i, m) in mutants.iter().enumerate() {
+        if was_interrupted() {
+            log(&format!(
+                "interrupted after {}/{} mutants — scratch dir will be cleaned up",
+                i, total
+            ));
+            break;
+        }
         log(&format!(
             "[{}/{}] {} at {}:{}",
             i + 1,
@@ -127,6 +207,11 @@ pub fn run_mutants(
         ));
         results.push(run_one(cfg, m, &pristine, &tree));
     }
+
+    // The ScratchGuard drop will remove the scratch tree on the way out
+    // (normal exit, error, or Ctrl-C). Explicitly acknowledge it so a static
+    // analyser doesn't flag it as unused.
+    drop(_guard);
 
     Ok(results)
 }
@@ -420,6 +505,11 @@ fn run_impl(cmd: &mut Command, timeout: Duration) -> Result<(Option<i32>, bool, 
     cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
     let mut child: Child = cmd.spawn().context("spawn")?;
 
+    // Publish this child's PID so the Ctrl-C handler can SIGTERM it and
+    // unblock the wait loop immediately (instead of running out the timeout).
+    let pid = child.id();
+    CURRENT_CHILD_PID.store(pid, Ordering::SeqCst);
+
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
 
@@ -443,13 +533,21 @@ fn run_impl(cmd: &mut Command, timeout: Duration) -> Result<(Option<i32>, bool, 
         if let Some(st) = child.try_wait()? {
             break st;
         }
+        if was_interrupted() {
+            let _ = child.kill();
+            let _ = child.wait();
+            CURRENT_CHILD_PID.store(0, Ordering::SeqCst);
+            return Ok((None, false, String::from("interrupted")));
+        }
         if Instant::now() >= deadline {
             let _ = child.kill();
             let _ = child.wait();
+            CURRENT_CHILD_PID.store(0, Ordering::SeqCst);
             return Ok((None, false, String::new()));
         }
         std::thread::sleep(Duration::from_millis(50));
     };
+    CURRENT_CHILD_PID.store(0, Ordering::SeqCst);
 
     let o = out_h.join().unwrap_or_default();
     let e = err_h.join().unwrap_or_default();

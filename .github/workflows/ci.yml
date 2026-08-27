@@ -66,40 +66,37 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
-      # release.solana.com is currently unreachable (SSL_ERROR_SYSCALL) from
-      # both this runner and other hosts, so fetch the Solana release tarball
-      # from its GitHub mirror (github.com is reachable) instead.
-      - name: Install Solana toolchain (cargo-build-sbf) from GitHub mirror
+      # Install the modern Agave (v4.x) toolchain from its GitHub release —
+      # this ships a recent bundled Rust that compiles edition2024 anchor-lang
+      # crates. Earlier v2.x releases bundled Cargo 1.79 and could not.
+      - name: Install Agave / Solana toolchain (cargo-build-sbf)
         run: |
           set -euo pipefail
-          VER=v2.1.0
+          VER=v4.2.1
           curl -sSfL --retry 3 -o /tmp/solana-release.tar.bz2 \
             "https://github.com/anza-xyz/agave/releases/download/${VER}/solana-release-x86_64-unknown-linux-gnu.tar.bz2"
           mkdir -p /opt/solana
           tar -xjf /tmp/solana-release.tar.bz2 -C /opt/solana --strip-components=1
           echo "/opt/solana/bin" >> "$GITHUB_PATH"
           export PATH="/opt/solana/bin:$PATH"
-          command -v cargo-build-sbf && cargo-build-sbf --version || true
+          cargo-build-sbf --version
 
       - name: Verify cargo-build-sbf is reachable
         run: |
-          command -v cargo-build-sbf || { echo "::error::cargo-build-sbf not on PATH"; exit 1; }
+          command -v cargo-build-sbf
           cargo-build-sbf --version
 
-      - name: Build demo program (best-effort; solana toolchain may be Rust-version-incompatible)
-        continue-on-error: true
+      - name: Build demo program
         run: |
           set -euo pipefail
           cd demo/demo-vault
-          cargo build-sbf 2>&1 | tail -25 || {
-            echo "::warning::cargo build-sbf failed (see below). The solana release bundles Cargo 1.79 which cannot compile modern anchor-lang deps (edition2024). The authoritative mutation run is produced on a machine with a compatible toolchain."
-          }
+          cargo build-sbf
 
-      - name: Run mutator (best-effort)
-        continue-on-error: true
+      - name: Run mutator on demo program
         run: |
-          cargo run --quiet -- run demo/demo-vault --out target/mutanchor-ci --timeout 600 2>&1 | tail -30 || \
-            echo "::warning::mutator run could not complete in CI (see solana toolchain note)"
+          set -euo pipefail
+          cargo run --release --quiet -- run demo/demo-vault \
+            --out target/mutanchor-ci --timeout 600
 
       - name: Upload report artifact
         uses: actions/upload-artifact@v4

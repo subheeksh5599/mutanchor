@@ -21,6 +21,10 @@ proc-macro2 = { version = "1", features = ["span-locations"] }
 toml = "0.8"
 anyhow = "1"
 regex-lite = "0.1"
+ctrlc = "3"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
 
 [dev-dependencies]
 assert_cmd = "2"
