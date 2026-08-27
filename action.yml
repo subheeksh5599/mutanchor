@@ -1,0 +1,156 @@
+name: 'Mutanchor'
+description: 'Mutation testing for Solana Anchor programs. Fail CI when your tests miss injected bug classes.'
+author: 'subheeksh5599'
+branding:
+  icon: 'crosshair'
+  color: 'orange'
+
+inputs:
+  program-dir:
+    description: 'Path to the Anchor program directory (contains Cargo.toml + src/lib.rs).'
+    required: true
+  max-survivors:
+    description: 'Fail the build when surviving mutants exceed this number.'
+    required: false
+    default: '0'
+  survivors-only:
+    description: 'If true, only survivors count toward the threshold (build-fails ignored).'
+    required: false
+    default: 'false'
+  skip-operators:
+    description: 'Comma-separated list of operator ids to skip (e.g. "comparison_flip,close_rent_drop").'
+    required: false
+    default: ''
+  timeout:
+    description: 'Per-mutant build/test timeout in seconds.'
+    required: false
+    default: '300'
+  solana-version:
+    description: 'Agave / Solana toolchain version to install (e.g. v4.2.1).'
+    required: false
+    default: 'v4.2.1'
+  mutanchor-ref:
+    description: 'Git ref of the mutanchor tool to use (tag / branch / sha).'
+    required: false
+    default: 'v0.1.0'
+  upload-report:
+    description: 'Upload the mutation report (report.json, report.html, dashboard.json) as a workflow artifact.'
+    required: false
+    default: 'true'
+  artifact-name:
+    description: 'Name of the uploaded artifact.'
+    required: false
+    default: 'mutation-report'
+
+outputs:
+  mutation-score:
+    description: 'Mutation score as a fraction (0.0 .. 1.0).'
+    value: ${{ steps.run.outputs.mutation-score }}
+  killed:
+    description: 'Number of killed mutants.'
+    value: ${{ steps.run.outputs.killed }}
+  survived:
+    description: 'Number of surviving mutants.'
+    value: ${{ steps.run.outputs.survived }}
+  build-failed:
+    description: 'Number of build-failed mutants.'
+    value: ${{ steps.run.outputs.build-failed }}
+  timeout-count:
+    description: 'Number of timed-out mutants.'
+    value: ${{ steps.run.outputs.timeout }}
+  report-path:
+    description: 'Path to the produced report.json.'
+    value: ${{ steps.run.outputs.report-path }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Install Solana / Agave toolchain
+      shell: bash
+      run: |
+        set -euo pipefail
+        VER='${{ inputs.solana-version }}'
+        if command -v cargo-build-sbf >/dev/null 2>&1; then
+          echo "cargo-build-sbf already present: $(cargo-build-sbf --version)"
+          exit 0
+        fi
+        curl -sSfL --retry 3 -o /tmp/solana-release.tar.bz2 \
+          "https://github.com/anza-xyz/agave/releases/download/${VER}/solana-release-x86_64-unknown-linux-gnu.tar.bz2"
+        mkdir -p /opt/solana
+        tar -xjf /tmp/solana-release.tar.bz2 -C /opt/solana --strip-components=1
+        echo "/opt/solana/bin" >> "$GITHUB_PATH"
+        /opt/solana/bin/cargo-build-sbf --version
+
+    - name: Install mutanchor
+      shell: bash
+      run: |
+        set -euo pipefail
+        REF='${{ inputs.mutanchor-ref }}'
+        cargo install --git https://github.com/subheeksh5599/mutanchor --rev "$REF" --locked mutanchor 2>/dev/null || \
+        cargo install --git https://github.com/subheeksh5599/mutanchor --tag "$REF" --locked mutanchor 2>/dev/null || \
+        cargo install --git https://github.com/subheeksh5599/mutanchor --branch "$REF" --locked mutanchor
+        mutanchor --version
+
+    - name: Run mutanchor
+      id: run
+      shell: bash
+      run: |
+        set -euo pipefail
+        OUT="target/mutanchor-action"
+        SKIP_ARGS=""
+        if [ -n "${{ inputs.skip-operators }}" ]; then
+          IFS=',' read -ra OPS <<< "${{ inputs.skip-operators }}"
+          for op in "${OPS[@]}"; do
+            SKIP_ARGS="$SKIP_ARGS --skip $op"
+          done
+        fi
+        mutanchor run "${{ inputs.program-dir }}" --out "$OUT" --timeout "${{ inputs.timeout }}" $SKIP_ARGS
+        REPORT="$OUT/report.json"
+        [ -f "$REPORT" ] || { echo "::error::mutanchor produced no report.json"; exit 1; }
+        # Surface metrics.
+        python3 - "$REPORT" << 'EOF' >> "$GITHUB_OUTPUT"
+        import json, sys
+        r = json.load(open(sys.argv[1]))
+        print(f"mutation-score={r['mutationScore']}")
+        print(f"killed={r['killed']}")
+        print(f"survived={r['survived']}")
+        print(f"build-failed={r['buildFailed']}")
+        print(f"timeout={r['timeout']}")
+        print(f"report-path={sys.argv[1]}")
+        EOF
+        # Log a summary line.
+        python3 - "$REPORT" << 'EOF'
+        import json, sys
+        r = json.load(open(sys.argv[1]))
+        print(f"::notice title=Mutanchor::score {r['mutationScore']*100:.1f}% killed={r['killed']} survived={r['survived']} build-failed={r['buildFailed']} timeout={r['timeout']}")
+        EOF
+
+    - name: Gate on survivors
+      shell: bash
+      run: |
+        set -euo pipefail
+        REPORT="target/mutanchor-action/report.json"
+        python3 - "$REPORT" "${{ inputs.max-survivors }}" "${{ inputs.survivors-only }}" << 'EOF'
+        import json, sys
+        r = json.load(open(sys.argv[1]))
+        max_survivors = int(sys.argv[2])
+        survivors_only = sys.argv[3].lower() == 'true'
+        offenders = r['survived'] if survivors_only else r['survived']
+        # `survivors-only=false` mirrors the CLI's default: only survivors count
+        # today (build-failed is a non-escape). Kept as a switch for symmetry
+        # with the CLI.
+        if offenders > max_survivors:
+            print(f"::error title=Mutanchor gate::{offenders} surviving mutants exceeds max of {max_survivors}. See report.json artifact.")
+            sys.exit(1)
+        print(f"::notice title=Mutanchor gate::{offenders} survivors <= max {max_survivors} — gate passed.")
+        EOF
+
+    - name: Upload report artifact
+      if: ${{ inputs.upload-report == 'true' }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: target/mutanchor-action/

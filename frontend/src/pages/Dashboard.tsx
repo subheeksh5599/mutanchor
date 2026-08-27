@@ -1,7 +1,11 @@
 import { useEffect, useState } from "react";
 import { Nav } from "../components/Nav";
 import { Footer } from "../components/Footer";
-import { loadReport, type MutationReport } from "../lib/report";
+import {
+  KNOWN_REPORTS,
+  loadReportFromPath,
+  type MutationReport,
+} from "../lib/report";
 
 function pct(score: number) {
   return `${Math.round(score * 100)}%`;
@@ -169,21 +173,31 @@ function ReportView({ report }: { report: MutationReport }) {
   );
 }
 
+type Loaded = { path: string; label: string; note: string; report: MutationReport };
+
 export default function Dashboard() {
   const [state, setState] = useState<"loading" | "empty" | "loaded">("loading");
-  const [report, setReport] = useState<MutationReport | null>(null);
+  const [reports, setReports] = useState<Loaded[]>([]);
+  const [activeIdx, setActiveIdx] = useState(0);
 
   useEffect(() => {
     let live = true;
-    loadReport().then((r) => {
+    (async () => {
+      const results: Loaded[] = [];
+      for (const entry of KNOWN_REPORTS) {
+        const r = await loadReportFromPath(entry.path);
+        if (r) results.push({ ...entry, report: r });
+      }
       if (!live) return;
-      setReport(r);
-      setState(r ? "loaded" : "empty");
-    });
+      setReports(results);
+      setState(results.length > 0 ? "loaded" : "empty");
+    })();
     return () => {
       live = false;
     };
   }, []);
+
+  const active = reports[activeIdx];
 
   return (
     <div className="min-h-screen bg-bone">
@@ -195,7 +209,35 @@ export default function Dashboard() {
           </div>
         )}
         {state === "empty" && <EmptyState />}
-        {state === "loaded" && report && <ReportView report={report} />}
+        {state === "loaded" && active && (
+          <>
+            {reports.length > 1 && (
+              <div className="mx-auto max-w-6xl px-5 pt-10">
+                <p className="mono-label">Program</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {reports.map((r, i) => (
+                    <button
+                      key={r.path}
+                      onClick={() => setActiveIdx(i)}
+                      className={
+                        "border-2 border-ink px-3 py-1.5 text-[0.72rem] uppercase tracking-[0.14em] transition-colors " +
+                        (i === activeIdx
+                          ? "bg-ink text-bone"
+                          : "bg-bone text-ink hover:bg-paper")
+                      }
+                    >
+                      {r.label}
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-3 max-w-2xl text-[0.78rem] text-ink/60">
+                  {active.note}
+                </p>
+              </div>
+            )}
+            <ReportView report={active.report} />
+          </>
+        )}
       </main>
       <Footer />
     </div>

@@ -1,0 +1,32 @@
+# Drop-in example: run Mutanchor as a CI gate on any Anchor program.
+# Copy this file into `.github/workflows/mutanchor.yml` in your Anchor repo.
+#
+# The action installs the modern Solana / Agave toolchain (v4.2.1 by default),
+# installs the pinned mutanchor CLI, runs it against your program, and fails
+# the build if surviving mutants exceed `max-survivors`.
+
+name: Mutation testing
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  mutanchor:
+    name: Anchor mutation gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Mutanchor
+        uses: subheeksh5599/mutanchor@v0.1.0
+        with:
+          program-dir: programs/my_program   # your Anchor program dir
+          max-survivors: 0                   # fail on any survivor
+          # Optional:
+          # skip-operators: comparison_flip,close_rent_drop
+          # timeout: 300
+          # solana-version: v4.2.1
+          # upload-report: true

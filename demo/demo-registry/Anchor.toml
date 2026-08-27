@@ -1,0 +1,10 @@
+[features]
+seeds = true
+skip-lint = false
+
+[programs.localnet]
+demo_registry = "DR2dYswVtGwYbZV8Jba83216igfDYzFqxkY1KZzLpQRm"
+
+[provider]
+cluster = "Localnet"
+wallet = "~/.config/solana/id.json"

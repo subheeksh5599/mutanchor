@@ -592,5 +592,7 @@ fn exploit_for(op: Operator) -> &'static str {
         Operator::CpiTargetSwap => "A CPI now targets the wrong program; funds or authority could flow to the wrong place.",
         Operator::CloseRentDrop => "Closed or non-rent-exempt accounts are not validated; lamports or account state can leak.",
         Operator::ComparisonFlip => "A boundary check is inverted, so an out-of-range / off-by-one condition passes when it should not.",
+        Operator::UncheckedMath => "A `checked_add` / `checked_sub` / `checked_mul` was replaced by an unchecked arithmetic op; the mutation lets a silent overflow pass through balance / accounting logic that your tests would have caught.",
+        Operator::ReallocCheckDrop => "A `realloc` size guard was removed; the mutation lets an attacker resize / re-initialize an account to an unintended layout, and your suite does not catch it.",
     }
 }

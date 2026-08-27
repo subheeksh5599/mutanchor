@@ -6,7 +6,7 @@
 
 use serde::{Deserialize, Serialize};
 
-/// The eight operators. Each models a bug class from the Solana
+/// The ten operators. Each models a bug class from the Solana
 /// audit-findings corpus. The discriminant doubles as a stable machine id.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Operator {
@@ -26,11 +26,17 @@ pub enum Operator {
     CloseRentDrop,
     /// Flip a comparison/boolean boundary.
     ComparisonFlip,
+    /// Replace a `checked_add` / `checked_sub` / `checked_mul` with the
+    /// unchecked (`+` / `-` / `*`) form. Models silent arithmetic overflow.
+    UncheckedMath,
+    /// Drop a `realloc` size guard or size-check on account resize. Models
+    /// unchecked account resizing / re-initialization.
+    ReallocCheckDrop,
 }
 
 impl Operator {
     /// All operators, in README table order.
-    pub const ALL: [Operator; 8] = [
+    pub const ALL: [Operator; 10] = [
         Operator::SignerCheckRemoval,
         Operator::PdaSeedSwap,
         Operator::BumpMismatch,
@@ -39,6 +45,8 @@ impl Operator {
         Operator::CpiTargetSwap,
         Operator::CloseRentDrop,
         Operator::ComparisonFlip,
+        Operator::UncheckedMath,
+        Operator::ReallocCheckDrop,
     ];
 
     pub fn id(self) -> &'static str {
@@ -51,6 +59,8 @@ impl Operator {
             Operator::CpiTargetSwap => "cpi_target_swap",
             Operator::CloseRentDrop => "close_rent_drop",
             Operator::ComparisonFlip => "comparison_flip",
+            Operator::UncheckedMath => "unchecked_math",
+            Operator::ReallocCheckDrop => "realloc_check_drop",
         }
     }
 
@@ -65,6 +75,8 @@ impl Operator {
             Operator::CpiTargetSwap => "calling the wrong program",
             Operator::CloseRentDrop => "accounts closed or rent-exempt not validated",
             Operator::ComparisonFlip => "boundary errors (off-by-one, wrong operator)",
+            Operator::UncheckedMath => "silent arithmetic overflow (checked_* dropped)",
+            Operator::ReallocCheckDrop => "unchecked account resize / re-init",
         }
     }
 }

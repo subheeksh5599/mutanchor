@@ -1,4 +1,4 @@
-//! The mutation engine: the eight operators, applied to Anchor program source.
+//! The mutation engine: the ten operators, applied to Anchor program source.
 //!
 //! Each operator is a fixed, deterministic rule. It scans the source of an
 //! Anchor program, finds the construct that models a known Solana audit bug
@@ -71,6 +71,12 @@ pub fn generate(
         push(op, f, l, o, m, i)
     });
     comparison_flip(&lines, &ctx, &mut |op, f, l, o, m, i| {
+        push(op, f, l, o, m, i)
+    });
+    unchecked_math(&lines, &ctx, &mut |op, f, l, o, m, i| {
+        push(op, f, l, o, m, i)
+    });
+    realloc_check_drop(&lines, &ctx, &mut |op, f, l, o, m, i| {
         push(op, f, l, o, m, i)
     });
 
@@ -462,6 +468,103 @@ fn comparison_flip(
     }
 }
 
+/// Replace a `checked_add` / `checked_sub` / `checked_mul` call with its
+/// unchecked (`+` / `-` / `*`) form. Models silent arithmetic overflow, a
+/// recurring audit finding on token / balance handlers.
+fn unchecked_math(
+    lines: &[&str],
+    ctx: &OperatorCtx,
+    push: &mut dyn FnMut(Operator, &str, u32, String, String, Option<String>),
+) {
+    // Match e.g. `x.checked_add(y)` -> `x + y` and drop the outer `.ok_or(...)?`
+    // when present. Handles common shapes without full AST rewriting.
+    let re =
+        regex_lite::Regex::new(r"\.checked_(add|sub|mul)\(([^()]+)\)(\s*\.ok_or\([^()]*\)\?)?")
+            .unwrap();
+    for (idx, line) in lines.iter().enumerate() {
+        let line_no = (idx + 1) as u32;
+        let t = line.trim();
+        if t.starts_with("//") || t.starts_with("#[") {
+            continue;
+        }
+        let Some(cap) = re.captures(t) else { continue };
+        let (op_c, rhs) = (cap.get(1).unwrap().as_str(), cap.get(2).unwrap().as_str());
+        let symbol = match op_c {
+            "add" => "+",
+            "sub" => "-",
+            "mul" => "*",
+            _ => continue,
+        };
+        let orig_frag = cap.get(0).unwrap().as_str();
+        let replacement = format!(" {} {}", symbol, rhs.trim());
+        let muta_t = t.replacen(orig_frag, &replacement, 1);
+        let muta = format!("{}{}", &line[..line.len() - t.len()], muta_t);
+        if muta == *line {
+            continue;
+        }
+        push(
+            Operator::UncheckedMath,
+            ctx.rel_file,
+            line_no,
+            line.to_string(),
+            muta,
+            attribute(ctx, line_no),
+        );
+    }
+}
+
+/// Drop a `realloc` size guard on account-resize sites. Models unchecked
+/// account resizing / re-initialization findings.
+fn realloc_check_drop(
+    lines: &[&str],
+    ctx: &OperatorCtx,
+    push: &mut dyn FnMut(Operator, &str, u32, String, String, Option<String>),
+) {
+    for (idx, line) in lines.iter().enumerate() {
+        let line_no = (idx + 1) as u32;
+        let t = line.trim();
+        if t.starts_with("//") {
+            continue;
+        }
+        // Shape 1: an #[account(realloc = <N>, ...)] constraint. Drop the
+        // `realloc = <N>` clause.
+        if t.starts_with("#[account") && t.contains("realloc =") {
+            let re = regex_lite::Regex::new(r"realloc\s*=\s*[^,\)]+,?\s*").unwrap();
+            let muta_t = re.replacen(t, 1, "");
+            if muta_t != t {
+                let muta = format!("{}{}", &line[..line.len() - t.len()], muta_t);
+                push(
+                    Operator::ReallocCheckDrop,
+                    ctx.rel_file,
+                    line_no,
+                    line.to_string(),
+                    muta,
+                    attribute(ctx, line_no),
+                );
+                continue;
+            }
+        }
+        // Shape 2: an explicit `require!(<lhs> == 8 + T::INIT_SPACE …)` or
+        // `require!(account.data_len() <= …)` size guard adjacent to a
+        // realloc. Drop it, matching the audit-finding "no size check".
+        if t.contains("require!") && (t.contains("data_len") || t.contains("INIT_SPACE")) {
+            let muta = format!(
+                "{}// SIZE CHECK REMOVED (mutation): {}",
+                &line[..line.len() - t.len()],
+                t
+            );
+            push(
+                Operator::ReallocCheckDrop,
+                ctx.rel_file,
+                line_no,
+                line.to_string(),
+                muta,
+                attribute(ctx, line_no),
+            );
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::model::Operator;
@@ -565,6 +668,65 @@ struct Ctx<'info> {
         assert!(
             m.is_empty(),
             "function-signature return arrow must not be mutated, got: {m:?}"
+        );
+    }
+
+    #[test]
+    fn unchecked_math_replaces_checked_add_with_plus() {
+        let src = "vault.balance = vault.balance.checked_add(amount).ok_or(E::Overflow)?;";
+        let m = mutants_for(src, Operator::UncheckedMath);
+        assert!(!m.is_empty(), "checked_add should be mutated");
+        assert!(
+            m[0].mutated.contains("vault.balance + amount"),
+            "got: {}",
+            m[0].mutated
+        );
+        assert!(
+            !m[0].mutated.contains("checked_add"),
+            "checked_add must be gone, got: {}",
+            m[0].mutated
+        );
+    }
+
+    #[test]
+    fn unchecked_math_handles_checked_sub_and_mul() {
+        let src_sub = "a.checked_sub(b).ok_or(E::Underflow)?;";
+        let src_mul = "x.checked_mul(scale).ok_or(E::Overflow)?;";
+        let m_sub = mutants_for(src_sub, Operator::UncheckedMath);
+        let m_mul = mutants_for(src_mul, Operator::UncheckedMath);
+        assert!(
+            m_sub[0].mutated.contains("a - b"),
+            "sub: {}",
+            m_sub[0].mutated
+        );
+        assert!(
+            m_mul[0].mutated.contains("x * scale"),
+            "mul: {}",
+            m_mul[0].mutated
+        );
+    }
+
+    #[test]
+    fn realloc_check_drop_removes_realloc_constraint() {
+        let src = r#"    #[account(mut, realloc = 8 + Vault::INIT_SPACE, realloc::payer = authority, realloc::zero = false)]"#;
+        let m = mutants_for(src, Operator::ReallocCheckDrop);
+        assert!(!m.is_empty(), "realloc constraint should be mutated");
+        assert!(
+            !m[0].mutated.contains("realloc = 8"),
+            "realloc size guard must be dropped, got: {}",
+            m[0].mutated
+        );
+    }
+
+    #[test]
+    fn realloc_check_drop_removes_size_require() {
+        let src = "        require!(account.data_len() >= 8 + Vault::INIT_SPACE, E::TooSmall);";
+        let m = mutants_for(src, Operator::ReallocCheckDrop);
+        assert!(!m.is_empty(), "size-check require! should be mutated");
+        assert!(
+            m[0].mutated.contains("SIZE CHECK REMOVED"),
+            "got: {}",
+            m[0].mutated
         );
     }
 

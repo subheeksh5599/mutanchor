@@ -1,0 +1,23 @@
+[package]
+name = "demo_registry"
+version = "0.1.0"
+description = "A tiny Anchor name-registry program used as a second in-repo mutation-testing target for Mutanchor. Different bug surface than demo-vault (transfer + close + realloc-like resize)."
+edition = "2021"
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[dependencies]
+anchor-lang = "0.31.0"
+
+[dev-dependencies]
+anchor-lang = { version = "0.31.0", features = ["derive"] }
+anchor-litesvm = "0.2.0"
+solana-program = "2"
+solana-sdk = "2"
+
+[profile.release]
+lto = true
+opt-level = "s"
+overflow-checks = true
