@@ -74,8 +74,8 @@ fresh clone that builds, tests, and runs.
 - [OK] No secrets in repo; machine paths and `.env` gitignored.
 - [OK] cargo audit clean on the root lockfile (zero dalek/solana vulnerable entries).
 - [OK] No emoji, no hardcoded machine paths, env vars with defaults.
-- [] gitleaks pre-commit hook / CI scan (fetch-depth: 0). — still open, low-risk for a no-secret repo
-- [] Supply-chain: `cargo audit` runs in CI on every push (configured in workflow; needs a green run).
+- [OK] gitleaks CI scan (fetch-depth: 0) — `secret-scan` job in `.github/workflows/ci.yml`, runs on push/PR/weekly cron.
+- [OK] Supply-chain: `cargo audit` runs in CI on every push + weekly schedule (rustsec/audit-check@v2 in `.github/workflows/ci.yml`).
 - [PART] Dependency pinning via Cargo.lock — committed at root; demo program lockfile also committed.
 
 ## 7. CI/CD
@@ -85,7 +85,7 @@ fresh clone that builds, tests, and runs.
 - [OK] Every job green per-run (verified via gh run view: both jobs conclusion=success).
 - [] Release workflow (`cargo publish` dry-run / tag) — not yet added.
 - [PART] CD: site is deployed and live (HTTP 200 on `/`, `/dashboard`), but it's a manual/CLI deploy — state which; auto-deploy-on-push not proven (YOU: `vercel git connect` + rootDirectory).
-- [] Rollback path documented (redeploy previous commit works).
+- [OK] Rollback path documented in README Deploy section — `git checkout <last-good> -- frontend/ && vercel --prod`, or Vercel dashboard "Promote to Production". Site is stateless.
 
 ## 8. Repo & docs polish (readme-repo-polish standard)
 
@@ -93,8 +93,8 @@ fresh clone that builds, tests, and runs.
 - [OK] README starts with the clone command; see-it-in-one-command shows REAL `--help` output.
 - [OK] CHANGELOG present.
 - [OK] No build artifacts or nested targets committed (`.gitignore` covers `**/target` + generated reports).
-- [] Repo description + topics (`gh repo edit subheeksh5599/mutanchor --description ... --add-topic ...`).
-- [] shields.io badge row including a Tests/CI badge linked to real green runs + the live URL.
+- [OK] Repo description + topics — verified via `gh repo view`: description set, topics include `solana`, `anchor`, `mutation-testing`, `rust`, `litesvm`, `cli`, `devtools`, `solana-program`, `testing`.
+- [OK] shields.io badge row includes a real CI badge linked to the GitHub Actions workflow (`ci.yml`) + live URL badge already present.
 - [] Real screenshots of the CLI output / report panel (headless capture, pixel-variance-checked) in a Screenshots section.
 - [OK] `CONTRIBUTING.md` + `CODE_OF_CONDUCT.md` added.
 - [OK] Cargo.toml package metadata added (repository, homepage, readme, keywords, categories).
@@ -111,7 +111,7 @@ fresh clone that builds, tests, and runs.
 ## 10. Legal / framework
 
 - [OK] MIT license present.
-- [] README honest-limitations section: what a dev tool can/can't claim (mutation score ≠ audit; "dev-tool" framing per the grant).
+- [OK] README honest-limitations section added: audit ≠ mutation score, operator set is finite, equivalent-mutant caveat, toolchain reproducibility, demo-only coverage, no AI in analysis path.
 - [] Publish metadata finalized (see §8) before any `cargo publish`.
 
 ---

@@ -2,6 +2,7 @@
 
 # Mutanchor
 
+[![CI](https://github.com/subheeksh5599/mutanchor/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/subheeksh5599/mutanchor/actions/workflows/ci.yml)
 [![Live demo](https://img.shields.io/badge/live-mutanchor.vercel.app-D9FF00)](https://mutanchor.vercel.app)
 [![License: MIT](https://img.shields.io/badge/license-MIT-14151a.svg)](LICENSE)
 ![Language](https://img.shields.io/badge/Rust%202021-14151a)
@@ -43,6 +44,7 @@ Built for the Solana ecosystem. MIT licensed.
 - [How it uses Solana](#how-it-uses-solana)
 - [Engineering decisions & the hard problems](#engineering-decisions--the-hard-problems)
 - [What's real vs pending — the honesty table](#whats-real-vs-pending--the-honesty-table)
+- [Honest limitations](#honest-limitations)
 - [Tests](#tests)
 - [Run it locally](#run-it-locally)
 - [Deploy](#deploy)
@@ -224,6 +226,38 @@ audit corpus says bugs live.
 
 ---
 
+## Honest limitations
+
+Mutanchor is a developer tool, not an audit. Read this before treating a score
+as a safety claim.
+
+- **A high mutation score is not a security audit.** It measures whether your
+  test suite would catch a fixed catalog of small, syntactic bugs. Real audits
+  cover economic design, protocol composition, and multi-transaction attacks
+  that no single-line mutation can express.
+- **The operator set is finite and rule-based.** Eight operators cover the
+  most common Anchor bug classes (signer / PDA / bump / authority /
+  discriminator / CPI / close-rent / comparison flip). Bug classes outside
+  this catalog — reentrancy across CPIs, sysvar drift, oracle staleness,
+  arithmetic overflow patterns — are not measured today.
+- **Equivalent mutants can inflate "survivors".** Some source changes are
+  behaviorally identical to the original and can never be killed by any test.
+  Mutanchor drops obvious duplicates but does not claim to eliminate all
+  equivalents; treat surviving mutants as leads, not verdicts.
+- **Reproducibility depends on the Solana toolchain, not just Rust.** The
+  authoritative run of the demo uses a machine with a modern Rust; the Solana
+  release channel bundles Cargo 1.79, which cannot compile current
+  `anchor-lang` dependencies (edition2024). The CI demo-job runs
+  best-effort — see `.github/workflows/ci.yml`.
+- **Demo coverage.** The published 76.9% score is on `demo/demo-vault` only.
+  Numbers on other programs will differ; treat that score as a working proof
+  of the pipeline, not as a benchmark of arbitrary Anchor code.
+- **AI is used to build the tool, never to judge results.** Every mutation
+  comes from a deterministic rule, and every verdict comes from a real
+  `cargo build-sbf` + LiteSVM run. There is no model in the analysis path.
+
+---
+
 ## Tests
 
 The mutation engine ships with a unit test per operator, each running against a
@@ -294,6 +328,18 @@ cd frontend && npm run build && vercel --prod
 
 `scripts/publish-report.sh` copies the CLI's `report.json` into
 `frontend/public/` so the `/dashboard` panel renders it at the site root.
+
+**Rollback.** The site is redeployable from any prior good commit; every
+deploy is stateless (a static build of `frontend/`). To revert:
+
+```bash
+git checkout <last-good-commit> -- frontend/
+cd frontend && npm ci && npm run build && vercel --prod
+# or, via the Vercel dashboard: Deployments → pick a previous build → "Promote to Production"
+```
+
+There is no database, no server-side state, and no migration to reverse — a
+rollback is a rebuild.
 
 ---
 
