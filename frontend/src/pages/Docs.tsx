@@ -194,21 +194,21 @@ instructions (5):
    72  close                    src/lib.rs`}</CodeBlock>
 
               <CodeBlock label="mutanchor run">{`$ mutanchor run demo/demo-vault
-generated 16 mutants (0 equivalent/duplicate dropped) across 1 file(s)
+generated 18 mutants (0 equivalent/duplicate dropped) across 1 file(s)
 priming incremental build cache (pristine build + test)…
 cache primed
-[1/16] authority_check_drop at src/lib.rs:32
-[2/16] authority_check_drop at src/lib.rs:45
+[1/18] authority_check_drop at src/lib.rs:32
+[2/18] authority_check_drop at src/lib.rs:45
 ...
-mutation score: 81.2% (9 killed, 3 survived, 4 build-failed, 0 timeout)
+mutation score: 72.2% (9 killed, 5 survived, 4 build-failed, 0 timeout)
 report.json:  target/mutanchor/report.json
 report.html:  target/mutanchor/report.html
 dashboard.json: target/mutanchor/dashboard.json`}</CodeBlock>
 
               <CodeBlock label="mutanchor report / ci">{`$ mutanchor report target/mutanchor/report.json --html report.html
 $ mutanchor ci demo/demo-vault --max-survivors 0
-surviving mutants: 3 (max allowed: 0)
-error: CI gate: 3 surviving mutants exceed max of 0`}</CodeBlock>
+surviving mutants: 5 (max allowed: 0)
+error: CI gate: 5 surviving mutants exceed max of 0`}</CodeBlock>
 
               <p className="mt-6 max-w-2xl text-sm leading-relaxed text-ink/70">
                 The in-repo demo program (<code className="font-mono text-[0.8em]">demo/demo-vault</code>,
