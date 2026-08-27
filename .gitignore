@@ -17,8 +17,11 @@ dist
 .next
 out
 
-# Build artifacts / reports (generated, never committed)
+# Build artifacts / reports (generated, never committed).
+# EXCEPT: the published dashboard payload at frontend/public/report.json,
+# which IS committed — it's what /dashboard renders after `scripts/publish-report.sh`.
 report.json
+!frontend/public/report.json
 report-full.json
 dashboard.json
 report.html

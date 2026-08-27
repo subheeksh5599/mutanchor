@@ -18,9 +18,9 @@ fresh clone that builds, tests, and runs.
 
 - [OK] Fresh-clone build: `git clone` → `cargo test` passes (10 engine + 4 CLI tests) — verified from a clean checkout of the pushed repo.
 - [OK] CLI runs: `mutanchor --help`, `init`, `run --dry-run`, `report` all produce real output.
-- [OK] Real demo report exists: `target/mutanchor/report.json` from a LIVE run on `demo/demo-vault` — 76.9% (9 killed, 3 survived, 1 build-failed, 0 timeout); the 3 survivors are `authority_check_drop` (L32/L45/L73), verified as genuine (real builds + real test runs).
+- [OK] Real demo report exists: `target/mutanchor/report.json` from a LIVE run on `demo/demo-vault` — **81.2% (9 killed, 3 survived, 4 build-failed, 0 timeout, 16 mutants)**; the 3 survivors are `authority_check_drop` (L32/L45/L73), verified as genuine (real builds + real test runs). Reproduced by CI in [run 33076314990](https://github.com/subheeksh5599/mutanchor/actions/runs/33076314990).
 - [OK] Demo report published to the live panel — `/dashboard` renders the live run (77%, per-instruction table, survivor annotations); raw JSON at mutanchor.vercel.app/report.json (verified via browser + curl).
-- [OK] Full mutation run completes with correct verdicts ON THIS 2-CORE LAPTOP — fixed by warming the incremental cache (pristine build+test prime, target/ preserved across mutants with mtime-preserving restore); 13 mutants, 0 timeouts, 9 killed / 3 survived / 1 build-failed.
+- [OK] Full mutation run completes with correct verdicts ON THIS 2-CORE LAPTOP — fixed by warming the incremental cache (pristine build+test prime, target/ preserved across mutants with mtime-preserving restore); 16 mutants, 0 timeouts, 9 killed / 3 survived / 4 build-failed.
 - [OK] CI is green end-to-end — verified per-job success on run 32244231899 (Build/test/lint/audit ✓ + demo-job ✓).
 - [OK] No mocks/sample data anywhere; the panel explicitly stays empty until a real run exists.
 
@@ -106,7 +106,7 @@ fresh clone that builds, tests, and runs.
 - [OK] No server/daemon to run (one-shot CLI) — ops surface is minimal.
 - [OK] Health: the tool validates its inputs and fails with clear errors (e.g. "cannot read src/lib.rs").
 - [OK] `--help` / error paths tested for every subcommand — tests/cli.rs covers `--help` for init/run/report/ci plus "missing program dir" failure paths on all four (9 CLI tests total).
-- [OK] Performance: real measured run (13 mutants, 856 s wall on a 2-core/8 GB laptop) + honest extrapolation table for medium/large programs, documented in README `## Performance`. Multi-program benchmark suite is T2 scope.
+- [OK] Performance: real measured run (16 mutants, 812 s wall on a 2-core/8 GB laptop) + honest extrapolation table for medium/large programs, documented in README `## Performance`. Multi-program benchmark suite is T2 scope.
 
 ## 10. Legal / framework
 
@@ -128,8 +128,8 @@ tagged.** Second close-out pass (2026-08-27, evening) added:
   v4.2.1; `continue-on-error` best-effort warnings removed). The
   demo-mutation-report job must build the demo program and complete a
   real `mutanchor run`, or CI fails.
-- **Measured perf claim** in README `## Performance`: 13 mutants /
-  856 s wall on a 2-core/8 GB laptop, ~12 s per mutant steady-state,
+- **Measured perf claim** in README `## Performance`: 16 mutants /
+  812 s wall on a 2-core/8 GB laptop, ~11 s per mutant steady-state,
   plus an honest extrapolation table for medium/large programs.
 - **Third-party program evidence:** engine ran on the unmodified
   `favorites` program from `solana-developers/program-examples`
