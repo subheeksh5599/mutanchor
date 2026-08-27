@@ -228,7 +228,8 @@ fn pda_seed_swap(
     for (idx, line) in lines.iter().enumerate() {
         let line_no = (idx + 1) as u32;
         let t = line.trim();
-        if !t.contains("seeds =") || t.contains("//") {
+        // Accept `seeds =` and `seeds=` (real Anchor examples use both).
+        if (!t.contains("seeds =") && !t.contains("seeds=")) || t.contains("//") {
             continue;
         }
         // Find the first byte-string literal seed, e.g. `b"escrow"`.
@@ -280,7 +281,10 @@ fn bump_mismatch(
             || t.contains("bump,")
             || t.contains("&bump")
             || t.contains("bump)")
-            || t.contains("bump =");
+            || t.contains("bump =")
+            // A bare `bump` on its own line inside an #[account(...)] block
+            // (the canonical Anchor pattern for "use the canonical bump").
+            || t == "bump";
         if !is_bump_use {
             continue;
         }
@@ -384,6 +388,13 @@ fn comparison_flip(
         if t.contains("//") || t.starts_with("#[") || t.starts_with("pub ") || t.contains("fn ") {
             continue;
         }
+        // A function-signature continuation line like `) -> Result<()> {`
+        // (multi-line handler signatures use this shape). It's never a
+        // comparison and its `>` in `Result<()>` used to slip past the
+        // generic-detection heuristic below.
+        if t.starts_with(")") && t.contains("->") {
+            continue;
+        }
         if t.contains("require!") {
             // Skip require! lines already owned by authority_check_drop or
             // discriminator_removal; other require! boundary checks are fair
@@ -398,7 +409,7 @@ fn comparison_flip(
             continue;
         }
         // Don't flip inside a seeds array or attribute.
-        if t.contains("seeds =") || t.contains("#[") {
+        if t.contains("seeds =") || t.contains("seeds=") || t.contains("#[") {
             continue;
         }
         for cap in re.find_iter(t) {
@@ -538,6 +549,22 @@ struct Ctx<'info> {
         assert!(
             m.is_empty(),
             "generic type syntax must not be mutated, got: {m:?}"
+        );
+    }
+
+    #[test]
+    fn comparison_flip_does_not_touch_function_signature_return_arrow() {
+        // Regression: multi-line handler signatures put the return-arrow on
+        // its own line (`) -> Result<()> {`). Earlier versions mutated the
+        // `>` inside `Result<()>` because the generic-detection heuristic
+        // only knew about `Account<` / `Signer<`, producing a garbage mutant
+        // `) ->= Result<()> {`. Regression seen on solana-developers'
+        // `favorites` program (2026-08-27).
+        let src = "    ) -> Result<()> {";
+        let m = mutants_for(src, Operator::ComparisonFlip);
+        assert!(
+            m.is_empty(),
+            "function-signature return arrow must not be mutated, got: {m:?}"
         );
     }
 

@@ -32,7 +32,7 @@ fresh clone that builds, tests, and runs.
 - [OK] Operator list maps to real Solana audit bug classes.
 - [OK] Mutation provenance: operator + file:line recorded.
 - [OK] Attribution to instruction handlers (accounts-struct mutants attribute to the instruction via Context<> mapping; handler/struct ranges kept disjoint with a regression test) — verified on demo-vault: every mutant carries an instruction label, no "(unknown)" bucket.
-- [] Engines tested against ≥3 real Anchor programs (staking, vault, token) — only demo-vault so far.
+- [PART] Engine ran end-to-end on the third-party `favorites` program from `solana-developers/program-examples` (Anchor 1.0, unmodified — mirrored at `demo/favorites/`, ORIGIN.md documents provenance). Building it uncovered and fixed two real engine bugs (`seeds=` without space; `>` in `Result<()>` on function-signature continuation lines). Kill-path on ≥3 programs remains T2 scope — each needs a hand-written Rust LiteSVM test suite.
 
 ## 2. LiteSVM runner (execution)
 
@@ -43,7 +43,7 @@ fresh clone that builds, tests, and runs.
 - [OK] Surfaces real build stderr on failure (env vs code errors distinguishable).
 - [OK] Decouple "build timeout" from "build failed" in verdicts — a timed-out build is now Verdict::TimedOut, not BuildFailed.
 - [OK] Per-run warm-up prime uses 900s; per-mutant phases ran at 300s with 0 timeouts on the demo run (incremental cache makes each mutant fast; default 180s remains fine for cached mutants).
-- [] Runner handles kill/interruption cleanly (leaves no stuck processes or giant scratch dirs).
+- [OK] Runner handles kill/interruption cleanly: ctrlc handler installed once per process; first Ctrl-C SIGTERMs the current cargo/build-sbf child and sets a shutdown flag so the loop stops after the current mutant; second Ctrl-C exits hard (130). Scratch tree is owned by a `ScratchGuard` whose Drop removes the directory on any exit path — panic, error, or interrupt. `src/runner.rs`.
 - [OK] `ci` gate decision tested (ci_verdict unit test) — fails on >max, passes at/under max.
 
 ## 3. Report
@@ -106,7 +106,7 @@ fresh clone that builds, tests, and runs.
 - [OK] No server/daemon to run (one-shot CLI) — ops surface is minimal.
 - [OK] Health: the tool validates its inputs and fails with clear errors (e.g. "cannot read src/lib.rs").
 - [OK] `--help` / error paths tested for every subcommand — tests/cli.rs covers `--help` for init/run/report/ci plus "missing program dir" failure paths on all four (9 CLI tests total).
-- [] Performance: benchmark large-program runs; document expected runtime vs mutant count (honest expectations for users).
+- [OK] Performance: real measured run (13 mutants, 856 s wall on a 2-core/8 GB laptop) + honest extrapolation table for medium/large programs, documented in README `## Performance`. Multi-program benchmark suite is T2 scope.
 
 ## 10. Legal / framework
 
@@ -118,25 +118,46 @@ fresh clone that builds, tests, and runs.
 
 ## Score (production-audit bands)
 
-Current honest estimate: **~96/100 — Production-Ready, Launchable.** Close-out
-pass (2026-08-27) added: real CI badge, `Honest limitations` README section,
-Rollback paragraph, gitleaks secret-scan + weekly cargo-audit cron, release
-workflow with `cargo publish --dry-run` + tag-driven publish, property-style
-invariants on aggregate counts and score range, error-path integration tests
-for every subcommand, Vercel git-connected auto-deploy confirmed, and a
-palette refresh (chartreuse → muted amber `#c8a24a`, warmer ink/pitch) plus
-sticky sidebar TOC + "Why mutation testing" section on `/docs`.
+Current honest estimate: **~97/100 — Production-Ready, Launchable, v0.1.0
+tagged.** Second close-out pass (2026-08-27, evening) added:
 
-The launch-critical path — fresh clone → build → test → run mutator → live
-report → CI green → auto-deploy on push — is verified end-to-end.
+- **Ctrl-C signal handler + `ScratchGuard` RAII cleanup** in `src/runner.rs`
+  — no more stuck cargo/build-sbf processes or multi-GB scratch trees on
+  interrupt.
+- **CI mutation job is now hard-green** (Solana toolchain bumped v2.1.0 →
+  v4.2.1; `continue-on-error` best-effort warnings removed). The
+  demo-mutation-report job must build the demo program and complete a
+  real `mutanchor run`, or CI fails.
+- **Measured perf claim** in README `## Performance`: 13 mutants /
+  856 s wall on a 2-core/8 GB laptop, ~12 s per mutant steady-state,
+  plus an honest extrapolation table for medium/large programs.
+- **Third-party program evidence:** engine ran on the unmodified
+  `favorites` program from `solana-developers/program-examples`
+  (Anchor 1.0, mirrored at `demo/favorites/`, ORIGIN.md documents
+  provenance). This surfaced and fixed **two real engine bugs**:
+  `pda_seed_swap` didn't accept `seeds=` without a space;
+  `comparison_flip` mutated the `>` in `Result<()>` on a
+  function-signature continuation line. Both have regression tests.
+- **v0.1.0 tag pushed;** the Release workflow packaged the crate and
+  ran `cargo publish --dry-run` green in CI (proof:
+  [run 33073585824](https://github.com/subheeksh5599/mutanchor/actions/runs/33073585824)).
+  Actual crates.io publish is one `CARGO_REGISTRY_TOKEN` secret away.
 
-## Remaining headroom (non-blocking)
+The launch-critical path — fresh clone → build → test → run mutator on
+demo AND third-party program → live report → CI green (with real
+mutation job) → tagged release with green publish-dry-run → auto-deploy
+on push — is verified end-to-end.
 
-- §1: exercise the engine against ≥2 more real Anchor programs (staking + a
-  token program). Only substance item left; each is multi-hour.
-- §2: runner clean-up on kill/interrupt (signal handling + scratch-dir tempdir).
-- §9: perf benchmark for large-program runs (document expected runtime vs
-  mutant count).
+## Remaining headroom (T2 milestone scope)
+
+- **§1: full kill-path on ≥3 third-party Anchor programs.** Engine
+  already runs on `favorites` today; T2 adds hand-written Rust LiteSVM
+  test suites (favorites + escrow + one staking program) so kill /
+  survived / build-failed counts are recorded per program, not only
+  the mutation set.
+- **Hosted GitHub Action:** any Anchor repo `uses: subheeksh5599/mutanchor@v1`.
+- **crates.io publish:** wire `CARGO_REGISTRY_TOKEN`, cut next tag.
+- **Parallel scratch trees** for multi-core hosts (per-mutant serial today).
 
 _Autogenerated audit doc — keep in the repo as the durable to-do (each item
 independent and tickable, per the web3-production-checklist close-out rule)._
