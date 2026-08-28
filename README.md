@@ -4,6 +4,7 @@
 
 [![CI](https://github.com/subheeksh5599/mutanchor/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/subheeksh5599/mutanchor/actions/workflows/ci.yml)
 [![Docs](https://img.shields.io/badge/docs-mutanchor.vercel.app-c8a24a)](https://mutanchor.vercel.app)
+[![crates.io](https://img.shields.io/crates/v/mutanchor.svg)](https://crates.io/crates/mutanchor)
 [![License: MIT](https://img.shields.io/badge/license-MIT-14151a.svg)](LICENSE)
 ![Language](https://img.shields.io/badge/Rust%202021-14151a)
 ![Target](https://img.shields.io/badge/Solana%20Anchor-14151a)
@@ -483,7 +484,7 @@ mutanchor/
 - [x] Third-party program with full kill-path: `demo/favorites` (mirrored from `solana-developers/program-examples`, Anchor 1.0, hand-written Rust LiteSVM test suite via `anchor-litesvm 0.4`, `no-entrypoint` feature to avoid SPL-deps duplicate-symbol linker collision — engine passes `--test-features no-entrypoint`).
 - [x] v0.1.0 tagged; release workflow packages + `cargo publish --dry-run` verified in CI (workflow: `.github/workflows/release.yml`)
 - [x] Parallel scratch trees: `--jobs N` fans mutants out across N worker threads (each with its own warm build tree). Serial semantics preserved when N=1.
-- [ ] crates.io publish (`cargo install mutanchor`) — release workflow is green in dry-run; needs `CARGO_REGISTRY_TOKEN` secret to actually push (or run `scripts/publish-crate.sh` locally with a `cargo login`).
+- [x] crates.io publish: **[crates.io/crates/mutanchor](https://crates.io/crates/mutanchor)** — install with `cargo install mutanchor`.
 
 ---
 
