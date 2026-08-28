@@ -1,4 +1,3 @@
-import { Link } from "react-router-dom";
 import { Nav } from "../components/Nav";
 import { Footer } from "../components/Footer";
 
@@ -86,12 +85,6 @@ export default function Docs() {
                 >
                   GitHub source →
                 </a>
-                <Link
-                  to="/dashboard"
-                  className="mt-1 block text-[0.78rem] text-ink/60 transition-colors hover:text-ink"
-                >
-                  Live report →
-                </Link>
               </div>
             </div>
           </aside>
@@ -112,9 +105,10 @@ export default function Docs() {
                 would miss in production.
               </p>
               <p className="mt-4 max-w-2xl text-sm leading-relaxed text-ink/70">
-                It is a local CLI. Every change comes from a fixed rule set, not an
-                AI: same program, same mutants, deterministic output. No cluster is
-                involved — execution is fully in-process.
+                It is a local CLI — this site only documents it. Every change
+                comes from a fixed rule set, not an AI: same program, same
+                mutants, deterministic output. No cluster is involved —
+                execution is fully in-process on your machine.
               </p>
             </section>
 
@@ -177,8 +171,8 @@ cargo build --release
               <p className="mt-4 max-w-2xl text-sm leading-relaxed text-ink/70">
                 Requires a Rust toolchain (2021 edition or newer) and the Solana
                 build toolchain (<code className="font-mono text-[0.8em]">cargo build-sbf</code>).
-                The demo site is only a viewer for published reports; the tool
-                itself runs locally.
+                Mutanchor runs entirely on your machine — nothing is uploaded,
+                nothing is served. This site is documentation only.
               </p>
             </section>
 
@@ -214,11 +208,10 @@ error: CI gate: 5 surviving mutants exceed max of 0`}</CodeBlock>
 
               <p className="mt-6 max-w-2xl text-sm leading-relaxed text-ink/70">
                 The in-repo demo program (<code className="font-mono text-[0.8em]">demo/demo-vault</code>,
-                5 instructions, 10-test LiteSVM suite) is the reference run:{" "}
-                <Link to="/dashboard" className="underline decoration-ink/40 underline-offset-4 hover:decoration-ink">
-                  the live report
-                </Link>
-                .
+                5 instructions, 10-test LiteSVM suite) is the reference run.
+                Clone the repo and run the three commands above to reproduce it
+                — the exact scorecard prints to your terminal and lands in
+                <code className="font-mono text-[0.8em]"> target/mutanchor/</code>.
               </p>
             </section>
 
@@ -303,12 +296,15 @@ error: CI gate: 5 surviving mutants exceed max of 0`}</CodeBlock>
                 ))}
               </div>
               <p className="mt-8 max-w-2xl text-sm leading-relaxed text-ink/70">
-                A run produces JSON, a self-contained HTML scorecard, and a
-                dashboard payload. The live panel renders the real demo run —{" "}
-                <Link to="/dashboard" className="underline decoration-ink/40 underline-offset-4 hover:decoration-ink">
-                  mutanchor.vercel.app/dashboard
-                </Link>
-                .
+                A run produces a machine-readable
+                <code className="font-mono text-[0.8em]"> report.json</code>, a
+                self-contained
+                <code className="font-mono text-[0.8em]"> report.html</code>
+                scorecard, and a
+                <code className="font-mono text-[0.8em]"> dashboard.json</code>{" "}
+                aggregate — all written under
+                <code className="font-mono text-[0.8em]"> target/mutanchor/</code>{" "}
+                and viewable straight from disk. Nothing is uploaded.
               </p>
             </section>
           </div>
