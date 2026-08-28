@@ -1,4 +1,4 @@
-//! The mutation engine: the ten operators, applied to Anchor program source.
+//! The mutation engine: the twelve operators, applied to Anchor program source.
 //!
 //! Each operator is a fixed, deterministic rule. It scans the source of an
 //! Anchor program, finds the construct that models a known Solana audit bug
@@ -77,6 +77,12 @@ pub fn generate(
         push(op, f, l, o, m, i)
     });
     realloc_check_drop(&lines, &ctx, &mut |op, f, l, o, m, i| {
+        push(op, f, l, o, m, i)
+    });
+    close_receiver_swap(&lines, &ctx, &mut |op, f, l, o, m, i| {
+        push(op, f, l, o, m, i)
+    });
+    reinit_zero_guard_drop(&lines, &ctx, &mut |op, f, l, o, m, i| {
         push(op, f, l, o, m, i)
     });
 
@@ -565,6 +571,88 @@ fn realloc_check_drop(
     }
 }
 
+/// Retarget a `close = <account>` constraint to a different account, so
+/// the closed account's lamports flow to the wrong receiver. Models the
+/// "close-to-wrong-receiver" audit finding.
+fn close_receiver_swap(
+    lines: &[&str],
+    ctx: &OperatorCtx,
+    push: &mut dyn FnMut(Operator, &str, u32, String, String, Option<String>),
+) {
+    let re = regex_lite::Regex::new(r"close\s*=\s*([A-Za-z_][A-Za-z0-9_]*)").unwrap();
+    for (idx, line) in lines.iter().enumerate() {
+        let line_no = (idx + 1) as u32;
+        let t = line.trim();
+        if t.starts_with("//") {
+            continue;
+        }
+        let Some(cap) = re.captures(t) else { continue };
+        let receiver = cap.get(1).unwrap().as_str();
+        // Replace with a marker attacker-owned identifier that will not
+        // match the canonical receiver at runtime.
+        let attacker = if receiver == "attacker" {
+            "notauth"
+        } else {
+            "attacker"
+        };
+        let orig_frag = cap.get(0).unwrap().as_str();
+        let mutated_frag = format!("close = {}", attacker);
+        let muta_t = t.replacen(orig_frag, &mutated_frag, 1);
+        if muta_t == t {
+            continue;
+        }
+        let muta = format!("{}{}", &line[..line.len() - t.len()], muta_t);
+        push(
+            Operator::CloseReceiverSwap,
+            ctx.rel_file,
+            line_no,
+            line.to_string(),
+            muta,
+            attribute(ctx, line_no),
+        );
+    }
+}
+
+/// Drop the `realloc::zero = true` guard (or set it to `false`) on a
+/// resize constraint. Models the re-init-with-stale-bytes audit finding.
+fn reinit_zero_guard_drop(
+    lines: &[&str],
+    ctx: &OperatorCtx,
+    push: &mut dyn FnMut(Operator, &str, u32, String, String, Option<String>),
+) {
+    for (idx, line) in lines.iter().enumerate() {
+        let line_no = (idx + 1) as u32;
+        let t = line.trim();
+        if t.starts_with("//") {
+            continue;
+        }
+        if !t.contains("realloc::zero") {
+            continue;
+        }
+        // Two shapes:
+        //   realloc::zero = true   -> realloc::zero = false
+        //   realloc::zero = <expr> -> drop the whole clause
+        let mutated_t = if t.contains("realloc::zero = true") {
+            t.replacen("realloc::zero = true", "realloc::zero = false", 1)
+        } else {
+            let re = regex_lite::Regex::new(r"realloc::zero\s*=\s*[^,\)]+,?\s*").unwrap();
+            re.replacen(t, 1, "").to_string()
+        };
+        if mutated_t == t {
+            continue;
+        }
+        let muta = format!("{}{}", &line[..line.len() - t.len()], mutated_t);
+        push(
+            Operator::ReinitZeroGuardDrop,
+            ctx.rel_file,
+            line_no,
+            line.to_string(),
+            muta,
+            attribute(ctx, line_no),
+        );
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::model::Operator;
@@ -725,6 +813,35 @@ struct Ctx<'info> {
         assert!(!m.is_empty(), "size-check require! should be mutated");
         assert!(
             m[0].mutated.contains("SIZE CHECK REMOVED"),
+            "got: {}",
+            m[0].mutated
+        );
+    }
+
+    #[test]
+    fn close_receiver_swap_retargets_receiver() {
+        let src = r#"    #[account(mut, seeds = [b"vault"], bump, close = authority)]"#;
+        let m = mutants_for(src, Operator::CloseReceiverSwap);
+        assert!(!m.is_empty(), "close = authority should be mutated");
+        assert!(
+            m[0].mutated.contains("close = attacker"),
+            "got: {}",
+            m[0].mutated
+        );
+        assert!(
+            !m[0].mutated.contains("close = authority"),
+            "original receiver must be gone, got: {}",
+            m[0].mutated
+        );
+    }
+
+    #[test]
+    fn reinit_zero_guard_drop_flips_true_to_false() {
+        let src = r#"    #[account(mut, realloc = 8 + INIT_SPACE, realloc::payer = authority, realloc::zero = true)]"#;
+        let m = mutants_for(src, Operator::ReinitZeroGuardDrop);
+        assert!(!m.is_empty(), "realloc::zero = true should be mutated");
+        assert!(
+            m[0].mutated.contains("realloc::zero = false"),
             "got: {}",
             m[0].mutated
         );

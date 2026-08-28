@@ -22,5 +22,13 @@ custom-panic = []
 [dependencies]
 anchor-lang = {version = "1.0.2", features = ["init-if-needed"]}
 
+# LiteSVM test suite for Mutanchor. Dev-only so `cargo build-sbf`
+# does not touch them.
+[dev-dependencies]
+anchor-lang = { version = "1.0.2", features = ["derive"] }
+anchor-litesvm = "0.4.0"
+solana-program = "3"
+solana-sdk = "3"
+
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }

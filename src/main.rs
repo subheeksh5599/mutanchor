@@ -49,6 +49,17 @@ enum Command {
         /// Only emit the mutation set without executing (dry-run).
         #[arg(long)]
         dry_run: bool,
+        /// Number of parallel worker threads (each gets its own scratch tree).
+        /// Defaults to 1 (serial). Increase for multi-core hosts; memory
+        /// scales linearly with `--jobs` (each worker owns a full build tree).
+        #[arg(long, short = 'j', default_value_t = 1)]
+        jobs: usize,
+        /// Cargo features to enable on the program's test build (passed as
+        /// `--features` to `cargo test`). Useful for third-party programs
+        /// that expose a `no-entrypoint` feature to avoid duplicate-symbol
+        /// linker errors when tests pull in SPL crates.
+        #[arg(long, value_name = "FEATURES")]
+        test_features: Option<String>,
     },
     /// Emit the mutation report
     Report {
@@ -109,7 +120,17 @@ fn dispatch(cli: Cli) -> Result<()> {
             timeout,
             skip,
             dry_run,
-        } => engine::run(&program, &out, Duration::from_secs(timeout), &skip, dry_run),
+            jobs,
+            test_features,
+        } => engine::run(
+            &program,
+            &out,
+            Duration::from_secs(timeout),
+            &skip,
+            dry_run,
+            jobs,
+            test_features.as_deref(),
+        ),
         Command::Report { report, html } => {
             let r = engine::load_report(&report)?;
             let html_path = html.unwrap_or_else(|| report.with_file_name("report.html"));

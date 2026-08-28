@@ -17,6 +17,8 @@ pub fn run(
     timeout: Duration,
     skip: &[String],
     dry_run: bool,
+    jobs: usize,
+    test_features: Option<&str>,
 ) -> Result<()> {
     // 1. Discover the program and its instructions.
     let manifest = init::scan(program)?;
@@ -110,6 +112,8 @@ pub fn run(
         program_dir: program_dir.clone(),
         work_dir: PathBuf::from("/tmp/mutanchor-work"),
         timeout,
+        jobs: jobs.max(1),
+        test_features: test_features.map(str::to_string),
     };
     let results = runner::run_mutants(&cfg, &mutants, &|msg| println!("{msg}"))?;
 
@@ -301,7 +305,7 @@ pub fn ci(program: &Path, max_survivors: usize, _survivors_only: bool) -> Result
     // generation (no execution) would be wrong — CI must reflect a real run,
     // so we re-run the full pipeline into a temp report and gate on it.
     let out = std::env::temp_dir().join(format!("mutanchor-ci-{}", std::process::id()));
-    run(program, &out, Duration::from_secs(180), &[], false)?;
+    run(program, &out, Duration::from_secs(180), &[], false, 1, None)?;
     let r = load_report(&out.join("report.json"))?;
     let survivors = r.survived;
     println!("surviving mutants: {survivors} (max allowed: {max_survivors})");

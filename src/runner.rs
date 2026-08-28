@@ -99,6 +99,11 @@ pub struct RunConfig {
     pub work_dir: PathBuf,
     /// Per-mutant build+test timeout.
     pub timeout: Duration,
+    /// Number of parallel worker threads. Each worker owns a full scratch
+    /// tree. Default 1 (serial); memory scales linearly with jobs.
+    pub jobs: usize,
+    /// Comma-separated cargo features to pass to `cargo test`.
+    pub test_features: Option<String>,
 }
 
 impl Default for RunConfig {
@@ -107,6 +112,8 @@ impl Default for RunConfig {
             program_dir: PathBuf::from("."),
             work_dir: PathBuf::from("/tmp/mutanchor-work"),
             timeout: Duration::from_secs(180),
+            jobs: 1,
+            test_features: None,
         }
     }
 }
@@ -178,6 +185,9 @@ pub fn run_mutants(
         .arg(&manifest)
         .env("MUTANCHOR_PROGRAM_SO", &so)
         .env("CARGO_TERM_COLOR", "never");
+    if let Some(features) = &cfg.test_features {
+        wt.args(["--features", features]);
+    }
     let (_, ok, out) = run_impl(&mut wt, warm_timeout)?;
     if !ok {
         bail!(
@@ -188,25 +198,33 @@ pub fn run_mutants(
     }
     log("cache primed");
 
-    let mut results = Vec::with_capacity(total);
-    for (i, m) in mutants.iter().enumerate() {
-        if was_interrupted() {
+    // Parallel workers (each with its own scratch tree copy) OR the classic
+    // serial path when jobs=1.
+    let jobs = cfg.jobs.max(1);
+    let results = if jobs <= 1 {
+        let mut results = Vec::with_capacity(total);
+        for (i, m) in mutants.iter().enumerate() {
+            if was_interrupted() {
+                log(&format!(
+                    "interrupted after {}/{} mutants — scratch dir will be cleaned up",
+                    i, total
+                ));
+                break;
+            }
             log(&format!(
-                "interrupted after {}/{} mutants — scratch dir will be cleaned up",
-                i, total
+                "[{}/{}] {} at {}:{}",
+                i + 1,
+                total,
+                m.operator.id(),
+                m.file,
+                m.line
             ));
-            break;
+            results.push(run_one(cfg, m, &pristine, &tree));
         }
-        log(&format!(
-            "[{}/{}] {} at {}:{}",
-            i + 1,
-            total,
-            m.operator.id(),
-            m.file,
-            m.line
-        ));
-        results.push(run_one(cfg, m, &pristine, &tree));
-    }
+        results
+    } else {
+        run_mutants_parallel(cfg, mutants, &pristine, &tree, jobs, log)?
+    };
 
     // The ScratchGuard drop will remove the scratch tree on the way out
     // (normal exit, error, or Ctrl-C). Explicitly acknowledge it so a static
@@ -214,6 +232,98 @@ pub fn run_mutants(
     drop(_guard);
 
     Ok(results)
+}
+
+/// Parallel executor: fan out mutants across `jobs` worker threads, each
+/// owning its own scratch tree (copied from the primed one). Results are
+/// collected and returned in the same `mutants` order so the report is
+/// deterministic regardless of the schedule.
+fn run_mutants_parallel(
+    cfg: &RunConfig,
+    mutants: &[Mutant],
+    pristine: &Path,
+    warmed_tree: &Path,
+    jobs: usize,
+    log: &(dyn Fn(&str) + Sync),
+) -> Result<Vec<MutantResult>> {
+    use std::sync::atomic::AtomicUsize;
+    use std::sync::Arc;
+
+    let total = mutants.len();
+    log(&format!(
+        "running {} mutants across {} parallel workers (each with its own warm scratch tree)",
+        total, jobs
+    ));
+
+    // Build one warm tree per worker by copying the warmed tree.
+    let mut worker_trees: Vec<PathBuf> = Vec::with_capacity(jobs);
+    worker_trees.push(warmed_tree.to_path_buf()); // worker 0 reuses the primed tree
+    for i in 1..jobs {
+        let dst = cfg.work_dir.join(format!("tree_{}", i));
+        if dst.exists() {
+            std::fs::remove_dir_all(&dst).with_context(|| format!("clean {}", dst.display()))?;
+        }
+        log(&format!("cloning warm tree -> {}", dst.display()));
+        copy_dir(warmed_tree, &dst)?;
+        worker_trees.push(dst);
+    }
+
+    // Shared work queue: next mutant index to claim.
+    let next = Arc::new(AtomicUsize::new(0));
+    let results_slots: Vec<std::sync::Mutex<Option<MutantResult>>> =
+        (0..total).map(|_| std::sync::Mutex::new(None)).collect();
+    let results_arc = Arc::new(results_slots);
+    let mutants_arc: Arc<Vec<Mutant>> = Arc::new(mutants.to_vec());
+
+    std::thread::scope(|scope| {
+        for (wid, tree_path) in worker_trees.iter().enumerate() {
+            let next = Arc::clone(&next);
+            let results = Arc::clone(&results_arc);
+            let mutants = Arc::clone(&mutants_arc);
+            let cfg = cfg.clone();
+            let pristine = pristine.to_path_buf();
+            let tree = tree_path.clone();
+            scope.spawn(move || {
+                loop {
+                    if was_interrupted() {
+                        return;
+                    }
+                    let idx = next.fetch_add(1, Ordering::SeqCst);
+                    if idx >= mutants.len() {
+                        return;
+                    }
+                    let m = &mutants[idx];
+                    // Progress line (workers write concurrently; we accept
+                    // interleaving because the report is the durable record).
+                    eprintln!(
+                        "[{}/{}] (w{}) {} at {}:{}",
+                        idx + 1,
+                        mutants.len(),
+                        wid,
+                        m.operator.id(),
+                        m.file,
+                        m.line
+                    );
+                    let r = run_one(&cfg, m, &pristine, &tree);
+                    if let Ok(mut slot) = results[idx].lock() {
+                        *slot = Some(r);
+                    }
+                }
+            });
+        }
+    });
+
+    // Coalesce ordered results. Any missing slot means the run was
+    // interrupted mid-flight; drop those (they were not executed).
+    let mut out: Vec<MutantResult> = Vec::with_capacity(total);
+    for slot in results_arc.iter() {
+        if let Ok(mut guard) = slot.lock() {
+            if let Some(r) = guard.take() {
+                out.push(r);
+            }
+        }
+    }
+    Ok(out)
 }
 
 /// Last `n` lines of a combined output blob (for honest error tails).
@@ -458,6 +568,9 @@ fn run_tests(
         .arg(&manifest)
         .env("MUTANCHOR_PROGRAM_SO", &so)
         .env("CARGO_TERM_COLOR", "never");
+    if let Some(features) = &cfg.test_features {
+        cmd.args(["--features", features]);
+    }
 
     // We need the output even when the test run fails (that is what makes a
     // mutant "killed"), so use the raw impl and interpret ourselves.
@@ -594,5 +707,7 @@ fn exploit_for(op: Operator) -> &'static str {
         Operator::ComparisonFlip => "A boundary check is inverted, so an out-of-range / off-by-one condition passes when it should not.",
         Operator::UncheckedMath => "A `checked_add` / `checked_sub` / `checked_mul` was replaced by an unchecked arithmetic op; the mutation lets a silent overflow pass through balance / accounting logic that your tests would have caught.",
         Operator::ReallocCheckDrop => "A `realloc` size guard was removed; the mutation lets an attacker resize / re-initialize an account to an unintended layout, and your suite does not catch it.",
+        Operator::CloseReceiverSwap => "A `close = <receiver>` constraint now targets a different account; on close, the account's lamports flow to the wrong receiver — an attacker if they can select it.",
+        Operator::ReinitZeroGuardDrop => "A `realloc::zero = true` guard was dropped or negated; stale bytes from a prior use survive into the newly-sized layout, which your tests do not observe.",
     }
 }

@@ -13,6 +13,8 @@ const operators: Array<[string, string, string]> = [
   ["comparison flip", "boundary errors, off by one, wrong operator", "zero-amount or over-balance operations slip through"],
   ["unchecked math", "silent arithmetic overflow (checked_* dropped)", "balances wrap; overflow-in-price / mint-inflation escapes tests"],
   ["realloc check drop", "unchecked account resize / re-init", "account resized past its rent-exempt / expected layout"],
+  ["close receiver swap", "close-to-wrong-receiver (lamports leak)", "closing routes lamports to attacker-controlled account"],
+  ["reinit zero guard drop", "re-initialization with stale bytes", "resized account inherits stale bytes an attacker could weaponize"],
 ];
 
 const cli: Array<[string, string]> = [
@@ -222,7 +224,7 @@ error: CI gate: 5 surviving mutants exceed max of 0`}</CodeBlock>
 
             <section id="operators" className="mt-16 border-t border-ink/15 pt-12">
               <p className="mono-label">Operators</p>
-              <h2 className="display mt-3 text-3xl">TEN BUG CLASSES</h2>
+              <h2 className="display mt-3 text-3xl">TWELVE BUG CLASSES</h2>
               <p className="mt-4 max-w-2xl text-sm leading-relaxed text-ink/70">
                 Each operator models a recurring class from real Solana audit
                 findings. One operator fires per location; a mutant is exactly

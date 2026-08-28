@@ -6,7 +6,7 @@
 
 use serde::{Deserialize, Serialize};
 
-/// The ten operators. Each models a bug class from the Solana
+/// The twelve operators. Each models a bug class from the Solana
 /// audit-findings corpus. The discriminant doubles as a stable machine id.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Operator {
@@ -32,11 +32,19 @@ pub enum Operator {
     /// Drop a `realloc` size guard or size-check on account resize. Models
     /// unchecked account resizing / re-initialization.
     ReallocCheckDrop,
+    /// Retarget a `close = X` constraint to a different account. Models the
+    /// "close to wrong receiver" audit finding where lamports flow to an
+    /// attacker-chosen account.
+    CloseReceiverSwap,
+    /// Drop `realloc::zero = true` (or set it to `false`) on a resize
+    /// constraint. Models re-initialization attacks where old bytes leak
+    /// into the new layout.
+    ReinitZeroGuardDrop,
 }
 
 impl Operator {
     /// All operators, in README table order.
-    pub const ALL: [Operator; 10] = [
+    pub const ALL: [Operator; 12] = [
         Operator::SignerCheckRemoval,
         Operator::PdaSeedSwap,
         Operator::BumpMismatch,
@@ -47,6 +55,8 @@ impl Operator {
         Operator::ComparisonFlip,
         Operator::UncheckedMath,
         Operator::ReallocCheckDrop,
+        Operator::CloseReceiverSwap,
+        Operator::ReinitZeroGuardDrop,
     ];
 
     pub fn id(self) -> &'static str {
@@ -61,6 +71,8 @@ impl Operator {
             Operator::ComparisonFlip => "comparison_flip",
             Operator::UncheckedMath => "unchecked_math",
             Operator::ReallocCheckDrop => "realloc_check_drop",
+            Operator::CloseReceiverSwap => "close_receiver_swap",
+            Operator::ReinitZeroGuardDrop => "reinit_zero_guard_drop",
         }
     }
 
@@ -77,6 +89,8 @@ impl Operator {
             Operator::ComparisonFlip => "boundary errors (off-by-one, wrong operator)",
             Operator::UncheckedMath => "silent arithmetic overflow (checked_* dropped)",
             Operator::ReallocCheckDrop => "unchecked account resize / re-init",
+            Operator::CloseReceiverSwap => "close-to-wrong-receiver (lamports leak)",
+            Operator::ReinitZeroGuardDrop => "re-initialization with stale bytes",
         }
     }
 }
